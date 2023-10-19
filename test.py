@@ -9,7 +9,7 @@ def main():
     pygame.init()
     pygame.display.set_caption("2048")
      
-    # create a surface on screen that has the size of 240 x 180
+    # create a surface on screen that has the size of 500 x 500
     screen = pygame.display.set_mode((500,500))
      
     # define a variable to control the main loop
@@ -23,4 +23,5 @@ def main():
             if event.type == pygame.QUIT:
                 # change the value to False, to exit the main loop
                 pygame.quit()
+                sys.exit()
                 running = False
