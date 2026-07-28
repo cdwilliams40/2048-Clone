@@ -1,11 +1,25 @@
 """Entry point for Barnyard Blitz.
 
     python main.py
+
+The same file is the Android entry point: python-for-android runs main.py, so
+the display is opened full screen at the device's native resolution there and
+as a resizable window everywhere else.
 """
 
 import sys
 
 import pygame
+
+from barnyard import config, platform
+
+
+def open_display() -> pygame.Surface:
+    if platform.is_android():
+        # (0, 0) asks SDL for the device's own resolution.
+        return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    return pygame.display.set_mode((config.WIDTH, config.HEIGHT),
+                                   pygame.RESIZABLE)
 
 
 def main() -> int:
@@ -19,7 +33,7 @@ def main() -> int:
 
     from barnyard.game import Game
 
-    Game().run()
+    Game(open_display()).run()
     return 0
 
 

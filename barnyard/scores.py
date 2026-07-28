@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
+
+from . import platform
 
 
 def _store_path() -> Path:
-    root = os.environ.get("XDG_DATA_HOME")
-    base = Path(root) if root else Path.home() / ".local" / "share"
-    return base / "barnyard-blitz" / "highscores.json"
+    return platform.data_dir() / "highscores.json"
 
 
 class HighScores:

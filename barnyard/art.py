@@ -14,7 +14,12 @@ import pygame
 from . import config
 from .board import Power
 
-SS = 4  # supersample factor
+SS = 4  # supersample factor used for the reference (desktop) tile size
+
+
+def _supersample(size: int) -> int:
+    """Big phone tiles do not need a 4x buffer to look smooth."""
+    return max(2, min(4, round(280 / max(1, size))))
 
 
 def _shade(color, amount: float):
@@ -192,7 +197,7 @@ def _hay_overlay(surf, S):
 
 def build_tile_sprites(size: int) -> dict:
     """Return ``{(kind, power): Surface}`` for every animal and special."""
-    S = size * SS
+    S = size * _supersample(size)
     sprites: dict = {}
     for kind, (_name, pad, body, accent) in enumerate(config.ANIMALS):
         for power in (Power.NONE, Power.EGG, Power.HAY):
@@ -224,7 +229,8 @@ def _hill(surf, color, base_y, height, phase, width):
     pygame.draw.polygon(surf, color, points)
 
 
-def build_background(width: int, height: int) -> pygame.Surface:
+def build_background(width: int, height: int,
+                     cloud_top: int = 0) -> pygame.Surface:
     surf = pygame.Surface((width, height))
     for y in range(height):
         t = y / height
@@ -233,10 +239,11 @@ def build_background(width: int, height: int) -> pygame.Surface:
                   for a, b in zip(config.SKY_TOP, config.SKY_BOTTOM)),
             pygame.Rect(0, y, width, 1),
         )
-    # Kept high enough that no cloud pokes through the sliver of sky between
-    # the header plank and the board.
-    for cx, cy, scale in ((width * 0.18, 58, 1.0), (width * 0.62, 44, 0.7),
-                          (width * 0.88, 60, 0.85)):
+    # Offsets keep every cloud below ``cloud_top`` - the game passes the top of
+    # the header plank, so no cloud pokes out into the margin above it.
+    for cx, cy, scale in ((width * 0.18, cloud_top + 36, 1.0),
+                          (width * 0.62, cloud_top + 26, 0.7),
+                          (width * 0.88, cloud_top + 32, 0.85)):
         for dx, dy, rr in ((-26, 6, 20), (0, -6, 27), (26, 4, 22), (8, 10, 20)):
             _ellipse(surf, (252, 252, 255), cx + dx * scale, cy + dy * scale,
                      rr * 2 * scale, rr * 1.7 * scale)
