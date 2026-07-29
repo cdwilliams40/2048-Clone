@@ -8,7 +8,7 @@ source.dir = .
 source.include_exts = py,png
 source.exclude_dirs = tests, tools, .github, bin, .buildozer
 
-version = 1.0.0
+version = 2.0.0
 
 # python-for-android ships a pygame recipe that builds against the SDL2
 # bootstrap, which is the same SDL2 the desktop build uses.

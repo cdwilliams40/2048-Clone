@@ -11,16 +11,6 @@ import sys
 
 import pygame
 
-from barnyard import config, platform
-
-
-def open_display() -> pygame.Surface:
-    if platform.is_android():
-        # (0, 0) asks SDL for the device's own resolution.
-        return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    return pygame.display.set_mode((config.WIDTH, config.HEIGHT),
-                                   pygame.RESIZABLE)
-
 
 def main() -> int:
     # Ask for the mono 16-bit mixer the synthesised sound effects are built for.
@@ -31,9 +21,9 @@ def main() -> int:
     pygame.init()
     pygame.font.init()
 
-    from barnyard.game import Game
+    from barnyard.app import App, open_display
 
-    Game(open_display()).run()
+    App(open_display()).run()
     return 0
 
 

@@ -181,3 +181,99 @@ class Layout:
         rect = pygame.Rect(0, 0, w, h)
         rect.center = (self.w // 2, self.h // 2)
         return rect
+
+
+class FarmLayout:
+    """Geometry for the merge scene: top bar, orders, board, button bar."""
+
+    REF_CELL = 70
+
+    def __init__(self, width: int, height: int, rows: int, cols: int):
+        self.w = width
+        self.h = height
+        self.rows = rows
+        self.cols = cols
+        self.portrait = height > width * 1.08
+        self.margin = m = _clamp(round(min(width, height) * 0.022), 8, 30)
+        self.gap = g = max(6, round(m * 0.7))
+
+        top_h = _clamp(round(height * (0.082 if self.portrait else 0.11)),
+                       44, 116)
+        self.topbar = pygame.Rect(m, m, width - 2 * m, top_h)
+
+        if self.portrait:
+            orders_h = _clamp(round(height * 0.15), 96, 250)
+            bar_h = _clamp(round(height * 0.078), 46, 116)
+            self.orders = pygame.Rect(m, self.topbar.bottom + g,
+                                      width - 2 * m, orders_h)
+            self.bar = pygame.Rect(m, height - m - bar_h, width - 2 * m, bar_h)
+            area = pygame.Rect(m, self.orders.bottom + g, width - 2 * m,
+                               self.bar.top - g - (self.orders.bottom + g))
+            self.order_cards = self._row(self.orders, 3)
+        else:
+            panel_w = _clamp(round(width * 0.32), 200, 380)
+            area = pygame.Rect(m, self.topbar.bottom + g,
+                               width - 2 * m - g - panel_w,
+                               height - m - (self.topbar.bottom + g))
+            panel = pygame.Rect(area.right + g, area.y, panel_w, area.h)
+            self.orders = pygame.Rect(panel.x, panel.y, panel.w,
+                                      round(panel.h * 0.66))
+            self.bar = pygame.Rect(panel.x, self.orders.bottom + g, panel.w,
+                                   panel.bottom - self.orders.bottom - g)
+            self.order_cards = self._column(self.orders, 3)
+
+        self.cell = max(24, min(area.w // cols, area.h // rows))
+        self.board = pygame.Rect(0, 0, self.cell * cols, self.cell * rows)
+        self.board.center = area.center
+        self.area = area
+        self.scale = _clamp(self.cell / self.REF_CELL, 0.55, 3.0)
+        self._buttons()
+
+    # ------------------------------------------------------------------ helpers
+    def fs(self, base: int) -> int:
+        return max(9, round(base * self.scale))
+
+    def _row(self, rect, count):
+        pad = max(3, round(self.gap * 0.4))
+        each = (rect.w - pad * (count - 1)) // count
+        return [pygame.Rect(rect.x + i * (each + pad), rect.y, each, rect.h)
+                for i in range(count)]
+
+    def _column(self, rect, count):
+        pad = max(3, round(self.gap * 0.5))
+        each = (rect.h - pad * (count - 1)) // count
+        return [pygame.Rect(rect.x, rect.y + i * (each + pad), rect.w, each)
+                for i in range(count)]
+
+    def _buttons(self):
+        keys = ("story", "blitz", "storage", "menu")
+        self.buttons: dict[str, pygame.Rect] = {}
+        if self.portrait:
+            rects = self._row(self.bar, 4)
+        else:
+            pad = max(4, round(self.bar.h * 0.05))
+            cw = (self.bar.w - pad) // 2
+            ch = (self.bar.h - pad) // 2
+            rects = [pygame.Rect(self.bar.x + (i % 2) * (cw + pad),
+                                 self.bar.y + (i // 2) * (ch + pad), cw, ch)
+                     for i in range(4)]
+        self.buttons = dict(zip(keys, rects))
+
+    def cell_rect(self, cell) -> pygame.Rect:
+        r, c = cell
+        return pygame.Rect(self.board.x + c * self.cell,
+                           self.board.y + r * self.cell, self.cell, self.cell)
+
+    def cell_at(self, pos):
+        c = (pos[0] - self.board.x) // self.cell
+        r = (pos[1] - self.board.y) // self.cell
+        if 0 <= r < self.rows and 0 <= c < self.cols:
+            return (int(r), int(c))
+        return None
+
+    def centre_card(self, width_frac: float, height_frac: float) -> pygame.Rect:
+        w = round(min(self.w * width_frac, self.w - 2 * self.margin))
+        h = round(min(self.h * height_frac, self.h - 2 * self.margin))
+        rect = pygame.Rect(0, 0, w, h)
+        rect.center = (self.w // 2, self.h // 2)
+        return rect

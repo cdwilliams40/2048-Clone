@@ -9,27 +9,18 @@ window and a full-screen phone display.
 from __future__ import annotations
 
 import math
-import random
 from enum import Enum, auto
 
 import pygame
 
-from . import art, config, platform
-from .audio import Audio
-from .board import Board, Power
-from .effects import Effects
-from .layout import Layout
-from .scores import HighScores
+from .. import art, config
+from ..app import APP_PAUSING, BACK_KEY, Scene
+from ..board import Board, Power
 
 MODES = {
     "blitz": ("Blitz", "60 seconds. Match fast, cascade faster."),
     "relaxed": ("Relaxed", "No clock. Play until the barn runs dry."),
 }
-
-# Present on pygame 2 only, and only ever delivered on mobile.
-APP_PAUSING = getattr(pygame, "APP_WILLENTERBACKGROUND", None)
-APP_RESUMING = getattr(pygame, "APP_DIDENTERFOREGROUND", None)
-BACK_KEY = getattr(pygame, "K_AC_BACK", None)
 
 
 class Screen(Enum):
@@ -56,61 +47,30 @@ def ease_in(t: float) -> float:
     return t * t
 
 
-class Game:
-    def __init__(self, surface: pygame.Surface | None = None):
-        pygame.display.set_caption("Barnyard Blitz")
-        if surface is None:
-            surface = pygame.display.set_mode(
-                (config.WIDTH, config.HEIGHT), pygame.RESIZABLE)
-        self.screen = surface
-        self.clock = pygame.time.Clock()
-        self.rng = random.Random()
+class BlitzScene(Scene):
+    """The original match-3 round, now a minigame that pays out energy."""
 
-        self.audio = Audio()
-        self.scores = HighScores()
-        self.effects = Effects(self.rng)
+    layout_kind = "blitz"
 
-        self._fonts: dict[tuple[int, bool], pygame.font.Font] = {}
+    def __init__(self, app):
+        super().__init__(app)
         self.state = Screen.MENU
         self.mode = "blitz"
-        self.board = Board(rng=self.rng)
-        self.hitboxes: dict[str, pygame.Rect] = {}
-        self.running = True
+        self.board = Board(rng=app.rng)
+        self.reward = (0, 0)
         self._reset_round()
-        self._apply_layout(self.screen.get_size())
 
-    # ----------------------------------------------------------------- layout
-    def _apply_layout(self, size) -> None:
-        width, height = max(320, size[0]), max(400, size[1])
-        self.L = Layout(width, height, self.board.rows, self.board.cols)
-        self.canvas = pygame.Surface((width, height))
-        self.sprites = art.build_tile_sprites(max(12, self.L.tile - 6))
-        self.background = art.build_background(width, height, self.L.margin)
-        self.barn = art.build_barn(round(self.L.tile * 2.9),
-                                   round(self.L.tile * 2.3))
-        self._fonts.clear()
+    def on_enter(self, **kwargs) -> None:
+        self.state = Screen.MENU
+        self.reward = (0, 0)
+        self._reset_round()
 
-    def _on_resize(self, size) -> None:
-        if size == self.canvas.get_size():
-            return
-        self._apply_layout(size)
-
-    # ------------------------------------------------------------------ fonts
-    def font(self, size: int, bold: bool = False) -> pygame.font.Font:
-        key = (size, bold)
-        if key not in self._fonts:
-            name = "georgia,timesnewroman,dejavuserif,serif" if bold else \
-                "verdana,dejavusans,arial,sans"
-            try:
-                font = pygame.font.SysFont(name, size, bold=bold)
-            except pygame.error:
-                font = pygame.font.Font(None, size)
-            self._fonts[key] = font
-        return self._fonts[key]
+    def best(self, mode: str) -> int:
+        return self.app.session.best_blitz.get(mode, 0)
 
     # ------------------------------------------------------------------ round
     def _reset_round(self) -> None:
-        self.board = Board(rng=self.rng)
+        self.board = Board(rng=self.app.rng)
         self.score = 0
         self.cascade = 0
         self.best_cascade = 0
@@ -137,53 +97,35 @@ class Game:
         self.drag_from: tuple[int, int] | None = None
         self.drag_origin: tuple[int, int] | None = None
         self.drag_used = False
-        self.effects.particles.clear()
-        self.effects.popups.clear()
+        self.app.effects.particles.clear()
+        self.app.effects.popups.clear()
 
     def start(self, mode: str) -> None:
         self.mode = mode
         self._reset_round()
         self.state = Screen.PLAYING
-        self.audio.play("start")
+        self.app.audio.play("start")
 
-    # ------------------------------------------------------------------- loop
-    def run(self) -> None:
-        while self.running:
-            dt = min(self.clock.tick(config.FPS) / 1000.0, 0.05)
-            self.handle_events()
-            self.update(dt)
-            self.draw()
-        self.scores.save()
-        pygame.quit()
-
-    def handle_events(self) -> None:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            elif event.type == pygame.VIDEORESIZE:
-                self._on_resize((event.w, event.h))
-            elif event.type == pygame.KEYDOWN:
-                self._on_key(event)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self._on_press(event.pos)
-            elif event.type == pygame.MOUSEMOTION and event.buttons[0]:
-                self._on_drag(event.pos)
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                self._on_release(event.pos)
-            elif APP_PAUSING is not None and event.type == APP_PAUSING:
-                # Android is backgrounding us: freeze play and flush the save.
-                if self.state is Screen.PLAYING:
-                    self.paused = True
-                self.scores.save()
-            elif APP_RESUMING is not None and event.type == APP_RESUMING:
-                self._on_resize(self.screen.get_size())
+    # ------------------------------------------------------------------ input
+    def handle(self, event) -> None:
+        if event.type == pygame.KEYDOWN:
+            self._on_key(event)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self._on_press(event.pos)
+        elif event.type == pygame.MOUSEMOTION and event.buttons[0]:
+            self._on_drag(event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._on_release(event.pos)
+        elif APP_PAUSING is not None and event.type == APP_PAUSING:
+            if self.state is Screen.PLAYING:
+                self.paused = True
 
     def _on_key(self, event) -> None:
         if BACK_KEY is not None and event.key == BACK_KEY:
             self._go_back()
             return
         if event.key == pygame.K_m:
-            muted = self.audio.toggle_mute()
+            muted = self.app.audio.toggle_mute()
             self._say("Sound off" if muted else "Sound on")
             return
         if event.key == pygame.K_ESCAPE:
@@ -205,13 +147,13 @@ class Game:
 
     def _go_back(self) -> None:
         if self.state is Screen.MENU:
-            self.running = False
+            self.app.go("farm")
         else:
             self.state = Screen.MENU
 
     # ------------------------------------------------------------------ input
     def _hit(self, key: str, pos) -> bool:
-        rect = self.hitboxes.get(key)
+        rect = self.ui.hitboxes.get(key)
         return rect is not None and rect.collidepoint(pos)
 
     def _playable(self) -> bool:
@@ -224,18 +166,22 @@ class Game:
                 self.start("blitz")
             elif self._hit("relaxed", pos):
                 self.start("relaxed")
+            elif self._hit("farm", pos):
+                self.app.go("farm")
             return
         if self.state is Screen.GAME_OVER:
             if self._hit("again", pos):
                 self.start(self.mode)
             elif self._hit("menu", pos):
                 self.state = Screen.MENU
+            elif self._hit("farm", pos):
+                self.app.go("farm")
             return
         if self._on_control(pos):
             return
         if not self._playable():
             return
-        cell = self.L.cell_at(pos)
+        cell = self.app.L.cell_at(pos)
         if cell is None:
             self.selected = None
             return
@@ -249,7 +195,7 @@ class Game:
             self.selected = None
         else:
             self.selected = cell
-            self.audio.play("select")
+            self.app.audio.play("select")
 
     def _on_control(self, pos) -> bool:
         """The on-screen buttons, which are the only controls a phone has."""
@@ -260,7 +206,7 @@ class Game:
             self.start(self.mode)
             return True
         if self._hit("sound", pos):
-            muted = self.audio.toggle_mute()
+            muted = self.app.audio.toggle_mute()
             self._say("Sound off" if muted else "Sound on")
             return True
         if self._hit("menu", pos):
@@ -274,7 +220,7 @@ class Game:
             return
         dx = pos[0] - self.drag_origin[0]
         dy = pos[1] - self.drag_origin[1]
-        threshold = self.L.tile * 0.42
+        threshold = self.app.L.tile * 0.42
         if max(abs(dx), abs(dy)) < threshold:
             return
         if abs(dx) > abs(dy):
@@ -298,11 +244,11 @@ class Game:
         self.selected = None
         self.hint = None
         self.idle_time = 0.0
-        ax, ay = self.L.cell_rect(a).topleft
-        bx, by = self.L.cell_rect(b).topleft
+        ax, ay = self.app.L.cell_rect(a).topleft
+        bx, by = self.app.L.cell_rect(b).topleft
         self.offsets = {a: (bx - ax, by - ay), b: (ax - bx, ay - by)}
         self._set_phase(Phase.SWAP, config.SWAP_TIME)
-        self.audio.play("swap")
+        self.app.audio.play("swap")
 
     # ------------------------------------------------------------------ phases
     def _set_phase(self, phase: Phase, length: float) -> None:
@@ -350,11 +296,11 @@ class Game:
         a, b = self.pending
         if not self.swap_legal:
             self.board.swap(a, b)
-            ax, ay = self.L.cell_rect(a).topleft
-            bx, by = self.L.cell_rect(b).topleft
+            ax, ay = self.app.L.cell_rect(a).topleft
+            bx, by = self.app.L.cell_rect(b).topleft
             self.offsets = {a: (bx - ax, by - ay), b: (ax - bx, ay - by)}
             self._set_phase(Phase.REVERT, config.REVERT_TIME)
-            self.audio.play("invalid")
+            self.app.audio.play("invalid")
             return
 
         self.moves_made += 1
@@ -387,8 +333,8 @@ class Game:
     def _shuffle_board(self) -> None:
         self.board.shuffle()
         self._say("No moves - shuffling the barnyard!")
-        self.audio.play("shuffle")
-        self.offsets = {cell: (0, -self.L.board_h)
+        self.app.audio.play("shuffle")
+        self.offsets = {cell: (0, -self.app.L.board_h)
                         for cell in self.board.cells()}
         self._set_phase(Phase.SHUFFLE, config.FALL_TIME * 1.6)
 
@@ -403,32 +349,32 @@ class Game:
             gained += config.SPECIAL_BONUS[power.value]
 
         for name, cell in result.effects:
-            x, y = self.L.cell_rect(cell).center
+            x, y = self.app.L.cell_rect(cell).center
             if name == "egg":
-                self.effects.ring(x, y, (250, 214, 110), 26, 460)
-                self.effects.kick(7)
+                self.app.effects.ring(x, y, (250, 214, 110), 26, 460)
+                self.app.effects.kick(7)
             elif name == "hay":
-                self.effects.ring(x, y, (240, 226, 150), 30, 560)
-                self.effects.kick(9)
+                self.app.effects.ring(x, y, (240, 226, 150), 30, 560)
+                self.app.effects.kick(9)
             else:
-                self.effects.feathers(x, y, 26)
-                self.effects.kick(12)
-            self.audio.play(name)
+                self.app.effects.feathers(x, y, 26)
+                self.app.effects.kick(12)
+            self.app.audio.play(name)
 
         for cell, tile in result.cleared.items():
-            x, y = self.L.cell_rect(cell).center
-            self.effects.burst(x, y, config.ANIMALS[tile.kind][1], 7)
-            self.dying.append((cell, self.sprites[(tile.kind, tile.power)]))
+            x, y = self.app.L.cell_rect(cell).center
+            self.app.effects.burst(x, y, config.ANIMALS[tile.kind][1], 7)
+            self.dying.append((cell, self.app.tiles[(tile.kind, tile.power)]))
 
         focus = result.focus
         if focus is not None:
-            fx, fy = self.L.cell_rect(focus).center
-            self.effects.popup(fx, fy - 6, f"+{gained:,}", config.CREAM,
-                               self.L.fs(26 + min(10, multiplier)))
+            fx, fy = self.app.L.cell_rect(focus).center
+            self.app.effects.popup(fx, fy - 6, f"+{gained:,}", config.CREAM,
+                               self.app.L.fs(26 + min(10, multiplier)))
             if multiplier > 1:
-                self.effects.popup(fx, fy - self.L.tile * 0.5,
+                self.app.effects.popup(fx, fy - self.app.L.tile * 0.5,
                                    f"x{multiplier} CHAIN", config.GOLD,
-                                   self.L.fs(22))
+                                   self.app.L.fs(22))
         for _cell, _kind, power in result.specials:
             self._say({
                 "egg": "Golden Egg!",
@@ -437,17 +383,17 @@ class Game:
             }[power.value])
 
         self.score += gained
-        self.audio.match(self.cascade - 1)
-        self.effects.kick(2 + multiplier)
+        self.app.audio.match(self.cascade - 1)
+        self.app.effects.kick(2 + multiplier)
         self._set_phase(Phase.CLEAR, config.CLEAR_TIME)
 
     def _collapse(self) -> None:
         moves, spawns = self.board.collapse()
         self.offsets = {}
         for col, from_row, to_row in moves:
-            self.offsets[(to_row, col)] = (0, (from_row - to_row) * self.L.tile)
+            self.offsets[(to_row, col)] = (0, (from_row - to_row) * self.app.L.tile)
         for col, row, height in spawns:
-            self.offsets[(row, col)] = (0, -height * self.L.tile)
+            self.offsets[(row, col)] = (0, -height * self.app.L.tile)
         self._set_phase(Phase.FALL, config.FALL_TIME)
 
     # ----------------------------------------------------------------- finale
@@ -463,24 +409,32 @@ class Game:
         bonus = len(result.cleared) * config.POINTS_PER_TILE * 3
         self.score += bonus
         for name, cell in result.effects:
-            x, y = self.L.cell_rect(cell).center
-            self.effects.ring(x, y, config.GOLD, 24, 480)
-            self.audio.play(name)
+            x, y = self.app.L.cell_rect(cell).center
+            self.app.effects.ring(x, y, config.GOLD, 24, 480)
+            self.app.audio.play(name)
         for cell, tile in result.cleared.items():
-            x, y = self.L.cell_rect(cell).center
-            self.effects.burst(x, y, config.ANIMALS[tile.kind][1], 6)
+            x, y = self.app.L.cell_rect(cell).center
+            self.app.effects.burst(x, y, config.ANIMALS[tile.kind][1], 6)
         cells = sorted(result.cleared)
         if cells:
-            fx, fy = self.L.cell_rect(cells[len(cells) // 2]).center
-            self.effects.popup(fx, fy, f"+{bonus:,}", config.GOLD,
-                               self.L.fs(30))
-        self.effects.kick(10)
+            fx, fy = self.app.L.cell_rect(cells[len(cells) // 2]).center
+            self.app.effects.popup(fx, fy, f"+{bonus:,}", config.GOLD,
+                               self.app.L.fs(30))
+        self.app.effects.kick(10)
         self._set_phase(Phase.FINALE, config.FINALE_STEP)
 
     def _end_round(self) -> None:
-        self.new_record = self.scores.submit(self.mode, self.score)
+        self.new_record = self.score > self.best(self.mode)
+        # Blitz is the way to buy energy with skill; Relaxed is just for fun.
+        if self.mode == "blitz":
+            self.reward = self.app.session.claim_blitz(self.mode, self.score)
+        else:
+            self.reward = (0, 0)
+            if self.new_record:
+                self.app.session.best_blitz[self.mode] = self.score
+        self.app.save()
         self.state = Screen.GAME_OVER
-        self.audio.play("over")
+        self.app.audio.play("over")
 
     def _say(self, text: str) -> None:
         self.banner = text
@@ -488,7 +442,7 @@ class Game:
 
     # ------------------------------------------------------------------ update
     def update(self, dt: float) -> None:
-        self.effects.update(dt)
+        self.app.effects.update(dt)
         self.banner_time = max(0.0, self.banner_time - dt)
         if self.state is not Screen.PLAYING or self.paused:
             return
@@ -497,7 +451,7 @@ class Game:
             self.time_left = max(0.0, self.time_left - dt)
             if self.time_left <= 10 and int(self.time_left) < self.next_tick:
                 self.next_tick = int(self.time_left)
-                self.audio.play("tick", 0.6)
+                self.app.audio.play("tick", 0.6)
             if self.time_left <= 0:
                 self.time_over = True
         self._advance(dt)
@@ -511,106 +465,34 @@ class Game:
 
     # -------------------------------------------------------------------- draw
     def draw(self) -> None:
-        self.canvas.blit(self.background, (0, 0))
-        self.hitboxes.clear()
         if self.state is Screen.MENU:
             self._draw_menu()
         else:
             self._draw_board()
             self._draw_hud()
-            self.effects.draw(self.canvas, self.font)
+            self.app.effects.draw(self.ui.canvas, self.ui.font)
             self._draw_banner()
             if self.paused:
                 self._draw_overlay("Paused", "Tap pause again to play on")
             if self.state is Screen.GAME_OVER:
                 self._draw_game_over()
-        dx, dy = self.effects.offset()
-        self.screen.fill(config.WOOD_DARK)
-        self.screen.blit(self.canvas, (dx, dy))
-        pygame.display.flip()
-
-    # ----------------------------------------------------------------- widgets
-    def _plank(self, rect, color=config.WOOD, radius=None) -> None:
-        # Derive the trim from the shorter side and cap it: a board frame is
-        # hundreds of pixels tall and a proportional shadow would run off the
-        # bottom of the screen.
-        short = min(rect.w, rect.h)
-        if radius is None:
-            radius = max(6, min(24, round(short * 0.18)))
-        drop = max(2, min(8, round(short * 0.05)))
-        pygame.draw.rect(self.canvas, art.shade(color, -0.4),
-                         rect.move(0, drop), border_radius=radius)
-        pygame.draw.rect(self.canvas, color, rect, border_radius=radius)
-        pygame.draw.rect(self.canvas, art.shade(color, 0.22), rect,
-                         width=max(1, min(4, round(short * 0.025))),
-                         border_radius=radius)
-
-    def _text(self, text, size, color, center=None, topleft=None, right=None,
-              bold=False, shadow=True):
-        font = self.font(size, bold)
-        label = font.render(text, True, color)
-        rect = label.get_rect()
-        if center:
-            rect.center = center
-        elif topleft:
-            rect.topleft = topleft
-        elif right:
-            rect.midright = right
-        if shadow:
-            dark = font.render(text, True, (44, 34, 28))
-            dark.set_alpha(110)
-            self.canvas.blit(dark, rect.move(2, 2))
-        self.canvas.blit(label, rect)
-        return rect
-
-    def _button(self, key, rect, label, color=config.BARN_RED,
-                size: int = 27) -> None:
-        self.hitboxes[key] = rect
-        # On a touch screen the pointer parks wherever the last tap landed, so
-        # a hover highlight would just stick to a random button.
-        hovered = (not platform.touch_first()
-                   and rect.collidepoint(pygame.mouse.get_pos()))
-        shade = art.shade(color, 0.18) if hovered else color
-        self._plank(rect, shade)
-        self._text(label, self.L.fs(size), config.CREAM, center=rect.center,
-                   bold=True)
-
-    def _card(self, rect, title, value, value_color=config.INK,
-              bar: float | None = None, bar_color=config.GOLD) -> None:
-        self._plank(rect, config.CREAM)
-        self._text(title, self.L.fs(15), config.INK_SOFT,
-                   center=(rect.centerx, rect.y + rect.h * 0.20), shadow=False)
-        offset = 0.52 if bar is None else 0.48
-        self._text(value, self.L.fs(38), value_color,
-                   center=(rect.centerx, rect.y + rect.h * offset + rect.h * 0.06),
-                   bold=True)
-        if bar is None:
-            return
-        track = pygame.Rect(rect.x + rect.w * 0.10, rect.bottom - rect.h * 0.20,
-                            rect.w * 0.80, max(4, rect.h * 0.09))
-        pygame.draw.rect(self.canvas, (206, 196, 176), track,
-                         border_radius=int(track.h / 2))
-        fill = pygame.Rect(track.x, track.y, int(track.w * max(0.0, min(1.0, bar))),
-                           track.h)
-        pygame.draw.rect(self.canvas, bar_color, fill,
-                         border_radius=int(track.h / 2))
 
     # -------------------------------------------------------------------- menu
     def _draw_menu(self) -> None:
-        L = self.L
+        L = self.app.L
         cx = L.w // 2
         lines = [
             "Line up three or more of the same critter.",
             "Match 4 for a Golden Egg, an L or T for a Hay Bale,",
             "5 in a row for a Prize Rooster that clears a species.",
-            "Tap two neighbours, or swipe one into the other.",
+            "A Blitz round pays out energy and coins for the farm.",
         ]
 
         # Measure the whole stack first so it can be centred - a 2:1 phone has
         # far more height than the content needs.
         gap = L.fs(18)
         head_h = round(min(L.h * 0.14, L.w * 0.26))
-        barn_h = self.barn.get_height()
+        barn_h = self.app.barn.get_height()
         row_h = L.tile
         btn_h = max(40, min(round(L.h * 0.075), round(L.tile * 1.15)))
         best_h = L.fs(24)
@@ -622,54 +504,62 @@ class Game:
         header = pygame.Rect(0, 0, min(L.w - 2 * L.margin, round(L.w * 0.86)),
                              head_h)
         header.midtop = (cx, y)
-        self._plank(header, config.BARN_RED)
-        self._text("BARNYARD BLITZ", L.fs(48), config.CREAM,
+        self.ui.plank(header, config.BARN_RED)
+        self.ui.text("BARNYARD BLITZ", L.fs(48), config.CREAM,
                    center=(cx, header.centery - header.h * 0.14), bold=True)
-        self._text("a farm-fresh match-3 romp", L.fs(19), config.GOLD,
+        self.ui.text("a farm-fresh match-3 romp", L.fs(19), config.GOLD,
                    center=(cx, header.centery + header.h * 0.26))
         y = header.bottom + round(gap * 1.4)
 
-        self.canvas.blit(self.barn,
-                         self.barn.get_rect(midtop=(cx, y)))
+        self.ui.canvas.blit(self.app.barn,
+                         self.app.barn.get_rect(midtop=(cx, y)))
         y += barn_h + gap
 
         step = round(L.tile * 0.95)
         for i in range(len(config.ANIMALS)):
-            sprite = self.sprites[(i, Power.NONE)]
+            sprite = self.app.tiles[(i, Power.NONE)]
             x = cx - (len(config.ANIMALS) * step) // 2 + i * step + step // 2
             bob = math.sin(self.elapsed * 3 + i * 0.7) * (L.tile * 0.08)
-            self.canvas.blit(sprite, sprite.get_rect(
+            self.ui.canvas.blit(sprite, sprite.get_rect(
                 center=(x, int(y + row_h / 2 + bob))))
         y += row_h + round(gap * 1.2)
 
         bw = min(round(L.w * 0.42), round(L.tile * 4.2))
-        self._button("blitz", pygame.Rect(cx - bw - L.gap // 2, y, bw, btn_h),
+        self.ui.button("blitz", pygame.Rect(cx - bw - L.gap // 2, y, bw, btn_h),
                      "Blitz  60s")
-        self._button("relaxed", pygame.Rect(cx + L.gap // 2, y, bw, btn_h),
+        self.ui.button("relaxed", pygame.Rect(cx + L.gap // 2, y, bw, btn_h),
                      "Relaxed", config.WOOD)
         y += btn_h + round(btn_h * 0.10)  # clear the plank's drop shadow
         for i, mode in enumerate(("blitz", "relaxed")):
-            self._text(f"best {self.scores.best(mode):,}", L.fs(18), config.INK,
+            self.ui.text(f"best {self.best(mode):,}", L.fs(18), config.INK,
                        center=(cx + (i * 2 - 1) * (bw + L.gap) // 2,
                                y + best_h // 2))
         y += best_h + gap
 
         for line in lines:
-            self._text(line, L.fs(17), config.INK, center=(cx, y + L.fs(12)),
+            self.ui.text(line, L.fs(17), config.INK, center=(cx, y + L.fs(12)),
                        shadow=False)
             y += L.fs(24)
 
+        back = pygame.Rect(0, 0, min(round(L.w * 0.5), round(L.tile * 5)),
+                           btn_h)
+        back.midtop = (cx, y + L.fs(10))
+        if back.bottom > L.h - L.margin:
+            back.bottom = L.h - L.margin
+        self.ui.button("farm", back, "Back to the farm", config.WOOD_DARK,
+                       size=22)
+
     # ------------------------------------------------------------------- board
     def _draw_board(self) -> None:
-        L = self.L
-        self._plank(L.frame, config.WOOD, radius=max(8, L.frame_pad * 2))
+        L = self.app.L
+        self.ui.plank(L.frame, config.WOOD, radius=max(8, L.frame_pad * 2))
         board = L.board
         for r in range(self.board.rows):
             for c in range(self.board.cols):
                 color = config.CELL_LIGHT if (r + c) % 2 == 0 else config.CELL_DARK
-                pygame.draw.rect(self.canvas, color, L.cell_rect((r, c)))
+                pygame.draw.rect(self.ui.canvas, color, L.cell_rect((r, c)))
 
-        self.canvas.set_clip(board)
+        self.ui.canvas.set_clip(board)
 
         if self.hint and self.phase is Phase.IDLE:
             pulse = (math.sin(self.elapsed * 7) + 1) / 2
@@ -679,7 +569,7 @@ class Game:
                 pygame.draw.rect(glow, (255, 246, 190, int(70 + 90 * pulse)),
                                  glow.get_rect(),
                                  border_radius=round(L.tile * 0.18))
-                self.canvas.blit(glow, rect.topleft)
+                self.ui.canvas.blit(glow, rect.topleft)
 
         for cell in self.board.cells():
             tile = self.board.at(cell)
@@ -687,18 +577,18 @@ class Game:
                 continue
             ox, oy = self._tile_offset(cell)
             cx, cy = L.cell_rect(cell).center
-            sprite = self.sprites[(tile.kind, tile.power)]
+            sprite = self.app.tiles[(tile.kind, tile.power)]
             if tile.power is Power.ROOSTER:
                 pulse = 1.0 + 0.05 * math.sin(self.elapsed * 6)
                 size = int(sprite.get_width() * pulse)
                 sprite = pygame.transform.smoothscale(sprite, (size, size))
-            self.canvas.blit(sprite,
+            self.ui.canvas.blit(sprite,
                              sprite.get_rect(center=(cx + ox, cy + oy)))
 
         if self.selected is not None:
             rect = L.cell_rect(self.selected).inflate(-4, -4)
             pulse = (math.sin(self.elapsed * 9) + 1) / 2
-            pygame.draw.rect(self.canvas, (255, 255, 255), rect,
+            pygame.draw.rect(self.ui.canvas, (255, 255, 255), rect,
                              width=max(2, round(L.tile * 0.05 + pulse * 3)),
                              border_radius=round(L.tile * 0.2))
 
@@ -709,35 +599,35 @@ class Game:
             size = max(2, int(sprite.get_width() * scale))
             shrunk = pygame.transform.smoothscale(sprite, (size, size))
             shrunk.set_alpha(int(255 * (1.0 - progress)))
-            self.canvas.blit(shrunk,
+            self.ui.canvas.blit(shrunk,
                              shrunk.get_rect(center=L.cell_rect(cell).center))
 
-        self.canvas.set_clip(None)
+        self.ui.canvas.set_clip(None)
 
     # --------------------------------------------------------------------- HUD
     def _draw_hud(self) -> None:
-        L = self.L
-        self._plank(L.header, config.BARN_RED)
+        L = self.app.L
+        self.ui.plank(L.header, config.BARN_RED)
         pad = round(L.header.w * 0.025)
         if L.portrait:
-            self._text("BARNYARD BLITZ", L.fs(24), config.CREAM,
+            self.ui.text("BARNYARD BLITZ", L.fs(24), config.CREAM,
                        topleft=(L.header.x + pad,
                                 L.header.centery - L.fs(24) * 0.62), bold=True)
-            self._text(f"{self.score:,}", L.fs(30), config.GOLD,
+            self.ui.text(f"{self.score:,}", L.fs(30), config.GOLD,
                        right=(L.header.right - pad, L.header.centery),
                        bold=True)
         else:
-            self._text("BARNYARD BLITZ", L.fs(34), config.CREAM,
+            self.ui.text("BARNYARD BLITZ", L.fs(34), config.CREAM,
                        topleft=(L.header.x + pad,
                                 L.header.centery - L.fs(34) * 0.6), bold=True)
             anchor = L.header.right - L.header.w * 0.13
-            self._text(f"{self.score:,}", L.fs(40), config.GOLD,
+            self.ui.text(f"{self.score:,}", L.fs(40), config.GOLD,
                        center=(anchor, L.header.centery - L.fs(8)), bold=True)
-            self._text("SCORE", L.fs(15), config.CREAM,
+            self.ui.text("SCORE", L.fs(15), config.CREAM,
                        center=(anchor, L.header.bottom - L.fs(14)))
 
         if L.panel is not None:
-            self._plank(L.panel, config.WOOD_LIGHT)
+            self.ui.plank(L.panel, config.WOOD_LIGHT)
 
         time_card, chain_card, best_card = L.cards
         if self.mode == "blitz":
@@ -746,32 +636,32 @@ class Game:
             urgent = left <= 10
             tone = (196, 62, 48) if frac < 0.2 else \
                 (232, 168, 52) if frac < 0.5 else (108, 176, 96)
-            self._card(time_card, "TIME", f"{left:0.1f}",
+            self.ui.card(time_card, "TIME", f"{left:0.1f}",
                        (196, 62, 48) if urgent else config.INK, frac, tone)
         else:
             mins, secs = divmod(int(self.elapsed), 60)
-            self._card(time_card, "TIME PLAYED", f"{mins}:{secs:02d}")
+            self.ui.card(time_card, "TIME PLAYED", f"{mins}:{secs:02d}")
 
         chain = max(1, self.cascade)
-        self._card(chain_card, "CHAIN", f"x{min(chain, config.MAX_CASCADE_MULT)}",
+        self.ui.card(chain_card, "CHAIN", f"x{min(chain, config.MAX_CASCADE_MULT)}",
                    config.BARN_RED if chain > 1 else config.INK_SOFT,
                    min(1.0, self.cascade / config.MAX_CASCADE_MULT))
-        self._card(best_card, "BEST",
-                   f"{max(self.scores.best(self.mode), self.score):,}")
+        self.ui.card(best_card, "BEST",
+                   f"{max(self.best(self.mode), self.score):,}")
 
         if L.info is not None and L.info.h > L.fs(90):
             self._draw_panel_info(L.info)
         self._draw_controls()
 
     def _draw_panel_info(self, area: pygame.Rect) -> None:
-        L = self.L
+        L = self.app.L
         # Landscape draws this on the wooden panel, portrait on open sky, so
         # the ink has to flip to stay legible.
         on_wood = not L.portrait
         label = config.CREAM if on_wood else config.INK
         accent = config.GOLD if on_wood else config.BARN_RED
         y = area.y
-        self._text(MODES[self.mode][0].upper() + " MODE", L.fs(18), label,
+        self.ui.text(MODES[self.mode][0].upper() + " MODE", L.fs(18), label,
                    center=(area.centerx, y + L.fs(10)))
         y += L.fs(28)
         rows = [("4 in a row", "Golden Egg"), ("L or T shape", "Hay Bale"),
@@ -779,9 +669,9 @@ class Game:
         for shape, name in rows:
             if y + L.fs(20) > area.bottom:
                 return
-            self._text(shape, L.fs(16), label, topleft=(area.x, y),
+            self.ui.text(shape, L.fs(16), label, topleft=(area.x, y),
                        shadow=False)
-            self._text(name, L.fs(16), accent,
+            self.ui.text(name, L.fs(16), accent,
                        topleft=(area.x + area.w * 0.44, y), shadow=False)
             y += L.fs(22)
         y += L.fs(8)
@@ -789,7 +679,7 @@ class Game:
                      f"Best chain  x{self.best_cascade}"):
             if y + L.fs(20) > area.bottom:
                 return
-            self._text(line, L.fs(16), label, topleft=(area.x, y),
+            self.ui.text(line, L.fs(16), label, topleft=(area.x, y),
                        shadow=False)
             y += L.fs(22)
 
@@ -798,20 +688,20 @@ class Game:
         labels = {
             "pause": "Play" if self.paused else "Pause",
             "restart": "Restart",
-            "sound": "Unmute" if self.audio.muted else "Mute",
+            "sound": "Unmute" if self.app.audio.muted else "Mute",
             "menu": "Menu",
         }
         colors = {"pause": config.BARN_RED, "restart": config.WOOD_DARK,
                   "sound": config.WOOD_DARK, "menu": config.WOOD_DARK}
-        for key, rect in self.L.buttons.items():
-            self._button(key, rect, labels[key], colors[key], size=18)
+        for key, rect in self.app.L.buttons.items():
+            self.ui.button(key, rect, labels[key], colors[key], size=18)
 
     def _draw_banner(self) -> None:
         if self.banner_time <= 0 or not self.banner:
             return
-        L = self.L
+        L = self.app.L
         alpha = min(1.0, self.banner_time / 0.4)
-        font = self.font(L.fs(28), True)
+        font = self.ui.font(L.fs(28), True)
         label = font.render(self.banner, True, config.CREAM)
         rect = label.get_rect(center=(L.board.centerx,
                                       L.board.y + L.tile * 0.45))
@@ -819,56 +709,56 @@ class Game:
         plate = pygame.Surface(pad.size, pygame.SRCALPHA)
         pygame.draw.rect(plate, (*config.BARN_RED, int(215 * alpha)),
                          plate.get_rect(), border_radius=round(pad.h * 0.3))
-        self.canvas.blit(plate, pad.topleft)
+        self.ui.canvas.blit(plate, pad.topleft)
         label.set_alpha(int(255 * alpha))
-        self.canvas.blit(label, rect)
-
-    def _veil(self, alpha: int) -> None:
-        veil = pygame.Surface((self.L.w, self.L.h), pygame.SRCALPHA)
-        veil.fill((30, 24, 20, alpha))
-        self.canvas.blit(veil, (0, 0))
+        self.ui.canvas.blit(label, rect)
 
     def _draw_overlay(self, title: str, subtitle: str) -> None:
-        self._veil(170)
-        cx = self.L.w // 2
-        self._text(title, self.L.fs(50), config.CREAM,
-                   center=(cx, self.L.h // 2 - self.L.fs(30)), bold=True)
-        self._text(subtitle, self.L.fs(21), config.GOLD,
-                   center=(cx, self.L.h // 2 + self.L.fs(20)))
+        self.ui.veil(170)
+        cx = self.app.L.w // 2
+        self.ui.text(title, self.app.L.fs(50), config.CREAM,
+                   center=(cx, self.app.L.h // 2 - self.app.L.fs(30)), bold=True)
+        self.ui.text(subtitle, self.app.L.fs(21), config.GOLD,
+                   center=(cx, self.app.L.h // 2 + self.app.L.fs(20)))
         self._draw_controls()
 
     def _draw_game_over(self) -> None:
-        L = self.L
-        self._veil(185)
+        L = self.app.L
+        self.ui.veil(185)
         cx = L.w // 2
         card = L.centre_card(0.82 if L.portrait else 0.58, 0.56)
-        self._plank(card, config.WOOD)
+        self.ui.plank(card, config.WOOD)
         inner = card.inflate(-round(card.w * 0.05), -round(card.h * 0.06))
-        self._plank(inner, config.CREAM)
+        self.ui.plank(inner, config.CREAM)
 
-        self._text("That's all, folks!", L.fs(36), config.BARN_RED,
+        self.ui.text("That's all, folks!", L.fs(36), config.BARN_RED,
                    center=(cx, inner.y + inner.h * 0.12), bold=True)
-        self._text(f"{self.score:,}", L.fs(62), config.INK,
+        self.ui.text(f"{self.score:,}", L.fs(62), config.INK,
                    center=(cx, inner.y + inner.h * 0.32), bold=True)
-        self._text("final score", L.fs(17), config.INK_SOFT,
+        self.ui.text("final score", L.fs(17), config.INK_SOFT,
                    center=(cx, inner.y + inner.h * 0.44), shadow=False)
         if self.new_record:
             pulse = (math.sin(self.elapsed * 6) + 1) / 2
-            self._text("NEW BARN RECORD!", L.fs(23),
+            self.ui.text("NEW BARN RECORD!", L.fs(23),
                        art.shade(config.GOLD, pulse * 0.3),
                        center=(cx, inner.y + inner.h * 0.55), bold=True)
         else:
-            self._text(f"best  {self.scores.best(self.mode):,}", L.fs(19),
+            self.ui.text(f"best  {self.best(self.mode):,}", L.fs(19),
                        config.INK_SOFT, center=(cx, inner.y + inner.h * 0.55),
                        shadow=False)
-        self._text(f"{self.moves_made} moves    best chain x{self.best_cascade}",
+        self.ui.text(f"{self.moves_made} moves    best chain x{self.best_cascade}",
                    L.fs(18), config.INK_SOFT,
                    center=(cx, inner.y + inner.h * 0.66), shadow=False)
+        energy, coins = self.reward
+        if energy or coins:
+            self.ui.text(f"Earned  {energy} energy   {coins:,} coins",
+                         L.fs(20), config.BARN_RED,
+                         center=(cx, inner.y + inner.h * 0.77), bold=True)
 
         bw = round(inner.w * 0.40)
         bh = max(40, round(inner.h * 0.16))
-        by = inner.bottom - bh - round(inner.h * 0.07)
-        self._button("again", pygame.Rect(cx - bw - L.gap // 2, by, bw, bh),
-                     "Play again", size=24)
-        self._button("menu", pygame.Rect(cx + L.gap // 2, by, bw, bh),
-                     "Menu", config.WOOD_DARK, size=24)
+        by = inner.bottom - bh - round(inner.h * 0.05)
+        self.ui.button("again", pygame.Rect(cx - bw - L.gap // 2, by, bw, bh),
+                     "Play again", size=22)
+        self.ui.button("farm", pygame.Rect(cx + L.gap // 2, by, bw, bh),
+                     "To the farm", config.WOOD_DARK, size=22)

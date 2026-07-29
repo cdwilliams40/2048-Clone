@@ -40,6 +40,42 @@ def _poly(surf, color, points):
     pygame.draw.polygon(surf, color, points)
 
 
+# Public aliases so sibling modules can compose the same primitives.
+ellipse = _ellipse
+poly = _poly
+
+
+def _farmer(s, S, body=(246, 226, 200), accent=(232, 188, 96)):
+    """The player's portrait: a face under a straw hat."""
+    _ellipse(s, body, 0.5 * S, 0.56 * S, 0.62 * S, 0.62 * S)
+    _ellipse(s, (36, 30, 26), 0.38 * S, 0.54 * S, 0.08 * S, 0.09 * S)
+    _ellipse(s, (36, 30, 26), 0.62 * S, 0.54 * S, 0.08 * S, 0.09 * S)
+    _ellipse(s, (198, 132, 132), 0.5 * S, 0.70 * S, 0.18 * S, 0.09 * S)
+    _ellipse(s, accent, 0.5 * S, 0.30 * S, 0.96 * S, 0.26 * S)
+    _ellipse(s, _shade(accent, -0.18), 0.5 * S, 0.235 * S, 0.56 * S, 0.30 * S)
+
+
+def build_portrait(kind: int, size: int) -> pygame.Surface:
+    """A round headshot for dialogue and order cards. ``kind`` -1 is the player."""
+    ss = _supersample(size)
+    S = size * ss
+    surf = pygame.Surface((S, S), pygame.SRCALPHA)
+    pygame.draw.circle(surf, config.CREAM, (S // 2, S // 2), S // 2)
+    inner = pygame.Surface((S, S), pygame.SRCALPHA)
+    if kind < 0:
+        _farmer(inner, S)
+    else:
+        _name, _pad, body, accent = config.ANIMALS[kind % len(config.ANIMALS)]
+        DRAWERS[kind % len(DRAWERS)](inner, S, body, accent)
+    mask = pygame.Surface((S, S), pygame.SRCALPHA)
+    pygame.draw.circle(mask, (255, 255, 255), (S // 2, S // 2), S // 2)
+    inner.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    surf.blit(inner, (0, 0))
+    pygame.draw.circle(surf, config.WOOD, (S // 2, S // 2), S // 2,
+                       width=max(2, S // 28))
+    return pygame.transform.smoothscale(surf, (size, size))
+
+
 # --------------------------------------------------------------------- animals
 def _cow(s, S, body, accent):
     _ellipse(s, _shade(body, -0.35), 0.20 * S, 0.34 * S, 0.20 * S, 0.24 * S)

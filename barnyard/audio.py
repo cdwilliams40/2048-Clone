@@ -95,6 +95,8 @@ class Audio:
         add("rooster", pygame.mixer.Sound(buffer=_render(
             [(523, 0, 120), (659, 90, 120), (784, 180, 140), (1046, 270, 260)],
             0.40)))
+        add("coin", pygame.mixer.Sound(buffer=_render(
+            [(1046, 0, 60), (1318, 45, 90)], 0.26)))
         add("shuffle", pygame.mixer.Sound(buffer=_render(
             [(392, 0, 110), (523, 90, 110), (659, 180, 160)], 0.30)))
         add("tick", pygame.mixer.Sound(buffer=_render([(1200, 0, 45)], 0.20)))

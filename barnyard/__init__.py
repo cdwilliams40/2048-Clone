@@ -1,3 +1,3 @@
-"""Barnyard Blitz - a farm-animal match-3 game built with pygame."""
+"""Barnyard Blitz - a farm merge game with a match-3 minigame, built with pygame."""
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
