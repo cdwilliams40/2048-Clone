@@ -1,26 +1,25 @@
 # Barnyard Blitz
 
-A cosy farm merge game in the mould of Gossip Harbor, with a Bejeweled-style
-match-3 round bolted on as its energy minigame. Merge eggs into baskets into
-carts into henhouses, fill the neighbours' orders, spend the takings on doing
-up Gran's farm, and find out who keeps leaving the gate open.
+A cosy farm merge game for Android, in the mould of Gossip Harbor, with a
+Bejeweled-style match-3 round as its energy minigame. Merge eggs into baskets
+into carts into henhouses, fill the neighbours' orders, spend the takings on
+doing up Gran's farm, and find out who keeps leaving the gate open.
 
-Everything you see is drawn at run time — the animals, the items, the barn,
-the sky and the sound effects are all generated in code, so there are no
-assets to ship. pygame is the only dependency.
+Native Kotlin, no third-party runtime dependencies. Every pixel and every
+sound is generated in code at run time — there are no image or audio assets in
+the APK, just a launcher icon.
 
-It runs on the desktop and on Android from the same `main.py`; the layout
-rearranges itself between landscape and portrait.
-
-## Running it
+## Building
 
 ```bash
-pip install -r requirements.txt
-python main.py
+./gradlew assembleDebug          # app/build/outputs/apk/debug/
+./gradlew installDebug           # onto a connected device
+./gradlew test                   # the engine unit tests
 ```
 
-Python 3.10 or newer. The window is resizable — the board, the fonts and the
-panels all rescale with it.
+Needs JDK 17 and the Android SDK (compileSdk 34). Minimum device is Android
+8.0 (API 26). CI builds the APK and uploads it as an artifact — see the
+*Android* workflow.
 
 ## The loop
 
@@ -39,19 +38,19 @@ Preserves — each with its own generator.
 **Customers queue along the top.** Tap one to see what they want; deliver it
 for coins and XP. Skip the ones you can't be bothered with and another
 neighbour wanders up. Coins pay for **renovation tasks**, and finishing a
-chapter's tasks plays the next scene of the story.
+chapter's tasks plays the next scene of the story — four chapters, twelve
+tasks, six recurring characters.
 
-**Energy** is the pacing valve: it trickles back at one point every 25 seconds
-up to a cap of 60, or you can go and earn a chunk of it by playing a round of
-**Blitz**.
+**Energy** is the pacing valve: one point every 25 seconds up to a cap of 60,
+or go and earn a chunk of it playing **Blitz**.
 
-Items you're hoarding can go in **storage** (8 slots), and anything you're
-done with can be **sold** for coins.
+Items you're hoarding go in **storage** (8 slots); anything you're done with
+can be **sold**.
 
 ## The Blitz minigame
 
-The original match-3 round, now worth energy and coins. Tap two neighbours or
-swipe one into the other to line up three or more of the same critter.
+Tap two neighbours or swipe one into the other to line up three or more of the
+same critter.
 
 | You match | You get | It does |
 | --- | --- | --- |
@@ -63,92 +62,74 @@ swipe one into the other to line up three or more of the same critter.
 Specials caught in someone else's blast set each other off. Cascades raise a
 chain multiplier up to ×10. When the 60 seconds run out, any specials left on
 the board go off in one last hurrah, and the score converts into energy and
-coins for the farm. There's an untimed Relaxed mode too, which pays nothing
-and is purely for fun.
+coins for the farm. Relaxed mode is untimed and pays nothing.
 
-## Controls
-
-Everything is tappable, so a phone needs nothing else. On the desktop there
-are keys too: `S` for the story, `B` for Blitz, `M` to mute, `Esc` (or the
-Android back button) to go back a screen. In a Blitz round, `P` pauses and `R`
-restarts.
+## Saving
 
 The farm saves itself continuously — every 20 seconds, on every screen change,
-and when Android backgrounds the app — to
-`~/.local/share/barnyard-blitz/farm.json` (or under `$XDG_DATA_HOME`). On
-Android it goes to the app's private storage, so the game asks for no
-permissions at all.
-
-## Building the Android APK
-
-Packaging is handled by [buildozer](https://buildozer.readthedocs.io), which
-drives python-for-android's SDL2 bootstrap and its `pygame` recipe.
-`buildozer.spec` is checked in and configured for a portrait, full-screen,
-arm64 + armv7 build.
-
-**In CI (recommended).** Run the *Android APK* workflow from the Actions tab
-(`workflow_dispatch`, pick `debug` or `release`). It installs the toolchain,
-caches the SDK/NDK between runs and uploads the APK as a build artifact. A
-cold run takes roughly 45–60 minutes because it compiles CPython for the
-device; cached runs are far quicker.
-
-**Locally**, on Linux with a JDK 17 installed:
-
-```bash
-pip install "cython==0.29.36" buildozer
-python tools/make_assets.py     # regenerates assets/icon.png + presplash.png
-buildozer android debug         # writes bin/barnyardblitz-*-debug.apk
-buildozer android debug deploy run    # install and launch on a connected device
-```
-
-Buildozer downloads the Android SDK and NDK on first use, so the machine needs
-network access to `dl.google.com` and a few GB of free disk.
-
-> **Not verified end to end.** The game has been tested at phone resolutions,
-> but no APK has been produced yet — this repo's development environment
-> blocks `dl.google.com`, so the SDK and NDK cannot be fetched there. The CI
-> workflow is the intended way to get a real APK and its first run is what
-> will confirm the toolchain pins.
+and in `onPause` — to `farm.json` in the app's private storage. That location
+needs no runtime permission, which is why the app declares **none at all**. A
+corrupt or truncated save starts a fresh farm rather than crashing.
 
 ## Layout
 
 ```
-main.py                    entry point, desktop and Android alike
-buildozer.spec             Android packaging config
-barnyard/
-  app.py                   display, shared services, scene switching, toasts
-  ui.py                    shared widgets: planks, buttons, cards, wrapping
-  layout.py                resolution-independent geometry for both screens
-  config.py                tuning constants and the palette
-  platform.py              Android detection and per-platform paths
-  art.py                   animals, portraits, tiles and scenery
-  mergeart.py              merge items: six containers x six motifs
-  audio.py                 synthesised sound effects (no files, no numpy)
-  effects.py               particles, popups, screen shake
-  board.py                 match-3 rules
-  merge/
-    items.py               chain and generator definitions
-    board.py               the merge grid, storage and selling
-    economy.py             energy, coins, XP and levelling
-    orders.py              customer orders
-    story.py               chapters, renovation tasks and dialogue
-    session.py             the save-able game state and cross-system rules
-    save.py                JSON persistence
-  scenes/
-    farm.py                the merge yard - the home screen
-    blitz.py               the match-3 minigame
-    story.py               chapters, tasks and dialogue scenes
-assets/                    generated launcher icon and splash screen
-tools/make_assets.py       regenerates those two PNGs
-tests/                     rules tests
-.github/workflows/android.yml   builds the APK
+app/src/main/kotlin/com/barnyardblitz/
+  MainActivity.kt          the single activity
+  GameView.kt              the game surface: frame loop and touch dispatch
+  engine/                  pure Kotlin, no Android imports - all unit tested
+    Json.kt                minimal JSON reader/writer
+    Chains.kt              the six merge chains and their generators
+    MergeBoard.kt          the merge grid, storage and selling
+    Economy.kt             energy, coins, XP and levelling
+    Orders.kt              customer orders
+    Story.kt               chapters, renovation tasks and dialogue
+    Session.kt             the save-able state and cross-system rules
+    Match3.kt              the Blitz rules
+    Sfx.kt                 waveform synthesis (raw PCM)
+  ui/                      layout, widgets and the three scenes
+    Layout.kt              resolution-independent geometry
+    Ui.kt                  palette, planks, buttons, cards, text wrapping
+    Game.kt                shared state and the scene switch
+    FarmScene.kt           the merge yard - the home screen
+    BlitzScene.kt          the match-3 minigame
+    StoryScene.kt          chapters, tasks and dialogue
+    Effects.kt             particles, popups, screen shake
+  art/Sprites.kt           every sprite, drawn to bitmaps at run time
+  audio/SfxPlayer.kt       AudioTrack playback of the synthesised effects
+  data/SaveStore.kt        atomic save file handling
+app/src/test/kotlin/       engine unit tests (JUnit)
+tools/LayoutCheck.kt       geometry sanity check across screen sizes
 ```
 
-Both rules layers (`barnyard/board.py` and everything under `barnyard/merge/`)
-are free of pygame imports, so they can be exercised headlessly:
+Two design choices worth flagging:
 
-```bash
-python tests/test_board.py     # match-3 rules
-python tests/test_merge.py     # merge, economy, orders, story, saving
-# or: pytest tests
-```
+- **The engine has no Android imports.** All the rules — merging, the economy,
+  orders, the story, saving, and the match-3 board — are plain Kotlin, so the
+  whole rules layer runs and is tested on a bare JVM.
+- **The UI is a custom `View` drawing to `android.graphics`,** not a
+  declarative toolkit. The game is immediate-mode by nature, which makes a
+  canvas a better fit, keeps the APK free of third-party dependencies, and
+  makes the drawing code a direct port of the geometry it replaces.
+
+## Verification status
+
+- **Engine: tested.** 46 JUnit tests covering merging, generators, storage,
+  energy and levelling, order generation and delivery, chapter progression,
+  save/load round trips, corrupt-save recovery, the full match-3 rule set, and
+  waveform synthesis. Includes a 4000-step grind that drives taps, merges,
+  deliveries and tasks while asserting nothing goes negative. `./gradlew test`.
+- **App layer: type-checked, not yet run.** The full UI, art and audio code
+  compiles cleanly against the Android 14 API, and `tools/LayoutCheck.kt`
+  verifies the layout geometry across ten screen sizes (portrait, landscape,
+  phone and tablet), including that every board cell round-trips through the
+  hit test.
+- **Not yet verified: the Gradle build itself, resource linking, and runtime
+  behaviour on a device.** The environment this was written in blocks
+  `dl.google.com`, so the Android SDK and Gradle plugin could not be fetched
+  and no APK has been produced. The CI workflow is the intended way to get one,
+  and its first run is what will confirm the build.
+
+`tools/LayoutCheck.kt` needs a real Android runtime jar to run off-device
+(`org.robolectric:android-all` from Maven Central works); on a machine with the
+SDK it is simpler to just build and look at it.
