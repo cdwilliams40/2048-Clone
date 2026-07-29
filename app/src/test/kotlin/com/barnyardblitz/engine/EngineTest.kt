@@ -151,6 +151,25 @@ class MergeBoardTest {
     }
 
     @Test
+    fun `finds a mergeable pair and ignores what cannot merge`() {
+        val b = board()
+        assertNull("nothing to merge yet", b.findMergePair())
+        b.put(Cell(0, 0), Item("eggs", 0, "eggs_gen"))
+        b.put(Cell(0, 1), Item("eggs", 0, "eggs_gen"))
+        assertNull("two generators are not a pair", b.findMergePair())
+        b.put(Cell(1, 0), Item("eggs", MAX_TIER))
+        b.put(Cell(1, 1), Item("eggs", MAX_TIER))
+        assertNull("top tier cannot merge", b.findMergePair())
+        b.put(Cell(2, 0), Item("wool", 2))
+        b.put(Cell(2, 1), Item("eggs", 2))
+        assertNull("different chains are not a pair", b.findMergePair())
+        b.put(Cell(2, 2), Item("wool", 2))
+        val pair = b.findMergePair()
+        assertNotNull(pair)
+        assertEquals(setOf(Cell(2, 0), Cell(2, 2)), setOf(pair!!.first, pair.second))
+    }
+
+    @Test
     fun `has and take look in storage too`() {
         val b = board()
         b.put(Cell(0, 0), Item("eggs", 2))
@@ -327,6 +346,18 @@ class SessionTest {
         session.economy.addCoins(1)
         assertTrue(session.completeTask(task))
         assertTrue(session.story.isDone(task))
+    }
+
+    @Test
+    fun `merges are counted and survive a save`() {
+        val session = Session.new(Random(31))
+        assertEquals(0, session.merges)
+        val pair = session.board.findMergePair()
+        assertNotNull("a fresh farm starts with mergeable eggs", pair)
+        session.drop(pair!!.first, pair.second)
+        assertEquals(1, session.merges)
+        val clone = Session.load(Json.encode(session.toJson()), Random(32))
+        assertEquals(1, clone.merges)
     }
 
     @Test

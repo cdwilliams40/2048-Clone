@@ -76,7 +76,8 @@ class Effects(private val random: Random = Random.Default) {
 
     fun popup(x: Float, y: Float, text: String, color: Int, size: Float) {
         popups.add(Popup(x, y, text, color, 0.9f, 0.9f, size))
-        if (popups.size > 12) popups.removeAt(0)
+        // A short stack: past three or four, labels just overlap each other.
+        while (popups.size > 4) popups.removeAt(0)
     }
 
     fun kick(amount: Float) {

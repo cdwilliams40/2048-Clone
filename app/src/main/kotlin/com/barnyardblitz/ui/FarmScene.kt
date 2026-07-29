@@ -26,6 +26,7 @@ private val PAD_LIGHT = 0xFFD2E4BC.toInt()
 private val PAD_DARK = 0xFFC6DAAE.toInt()
 private val PAD_RIM = 0xFFE2EFD4.toInt()
 private const val SPAWN_FLIGHT = 0.26f
+private const val HINT_AFTER = 6f
 
 /**
  * The merge yard - the game's home screen.
@@ -53,6 +54,7 @@ class FarmScene(private val game: Game) : Scene {
     private var storageOpen = false
     private var detail = -1
     private var elapsed = 0f
+    private var idleTime = 0f
 
     override fun onEnter(argument: String?) {
         selected = null
@@ -75,6 +77,7 @@ class FarmScene(private val game: Game) : Scene {
 
     // ------------------------------------------------------------------- input
     override fun onDown(x: Float, y: Float) {
+        idleTime = 0f
         if (detail >= 0) {
             pressDetail(x, y)
             return
@@ -191,9 +194,14 @@ class FarmScene(private val game: Game) : Scene {
                 pop[target] = 0f
                 game.sfx.play(Sfx.matchName(min(7, item.tier + 1)))
                 val rect = layout.cellRect(target.row, target.col)
-                game.effects.burst(rect.centerX(), rect.centerY(), Chains[item.chain].base or 0xFF000000.toInt(), 10)
-                game.effects.popup(rect.centerX(), rect.top, item.name, Palette.CREAM, layout.fs(18))
-                if (item.tier == MAX_TIER) game.effects.kick(8f)
+                game.effects.burst(rect.centerX(), rect.centerY(), Chains[item.chain].base or 0xFF000000.toInt(), 6 + item.tier * 3)
+                // Only announce the bigger merges. Naming every egg trio turns
+                // a quick run of merges into a wall of overlapping labels, and
+                // makes reaching a cart feel no different from a bundle.
+                if (item.tier >= 2) {
+                    game.effects.popup(rect.centerX(), rect.top, item.name, Palette.CREAM, layout.fs(16 + item.tier * 2))
+                }
+                if (item.tier >= 4) game.effects.kick(4f + item.tier)
             }
             DropKind.MOVE, DropKind.SWAP -> game.sfx.play(Sfx.SWAP)
             DropKind.NONE -> Unit
@@ -238,6 +246,7 @@ class FarmScene(private val game: Game) : Scene {
     // ------------------------------------------------------------------ update
     override fun update(dt: Float) {
         elapsed += dt
+        idleTime += dt
         val done = pop.entries.filter { it.value + dt > 0.34f }.map { it.key }
         pop.entries.forEach { it.setValue(it.value + dt) }
         done.forEach { pop.remove(it) }
@@ -414,6 +423,8 @@ class FarmScene(private val game: Game) : Scene {
             drawItem(canvas, cell, item)
         }
 
+        drawGuidance(canvas)
+
         selected?.let { cell ->
             val rect = layout.cellRect(cell.row, cell.col)
             rect.inset(3f, 3f)
@@ -444,6 +455,63 @@ class FarmScene(private val game: Game) : Scene {
                 }
             }
         }
+    }
+
+    /**
+     * First-run coaching, then an idle hint once the player knows the ropes.
+     *
+     * A merge game is only obvious once someone has seen a merge happen, so the
+     * very first session points at the generator and then at the first pair.
+     * After that this stays out of the way until the player has stalled.
+     */
+    private fun drawGuidance(canvas: Canvas) {
+        if (dragging || selected != null || detail >= 0 || storageOpen) return
+        val firstRun = session.merges == 0
+        val pair = session.board.findMergePair()
+
+        if (firstRun && pair != null) {
+            ringCells(canvas, listOf(pair.first, pair.second))
+            coachLabel(canvas, "Drag one onto its twin")
+            return
+        }
+        if (firstRun) {
+            val generator = session.board.occupied().firstOrNull { it.second.isGenerator }?.first
+            if (generator != null && session.economy.canSpend(Chains["eggs"].generator.energy)) {
+                ringCells(canvas, listOf(generator))
+                coachLabel(canvas, "Tap the nest box for an egg")
+            }
+            return
+        }
+        if (idleTime > HINT_AFTER && pair != null) ringCells(canvas, listOf(pair.first, pair.second))
+    }
+
+    private fun ringCells(canvas: Canvas, cells: List<Cell>) {
+        val pulse = (sin(elapsed * 4f) + 1f) / 2f
+        ui.stroke.color = withAlpha(0xFFFFF0A0.toInt(), 0.55f + 0.35f * pulse)
+        ui.stroke.strokeWidth = max(2f, layout.cell * 0.055f)
+        for (cell in cells) {
+            val rect = layout.cellRect(cell.row, cell.col)
+            rect.inset(layout.cell * 0.06f, layout.cell * 0.06f)
+            canvas.drawRoundRect(rect, layout.cell * 0.2f, layout.cell * 0.2f, ui.stroke)
+        }
+    }
+
+    /**
+     * The caption rides along the bottom of the yard rather than next to the
+     * cell it describes: the ring already points, and a floating plate next to
+     * a corner pair covers the very items it is talking about.
+     */
+    private fun coachLabel(canvas: Canvas, text: String) {
+        val size = layout.fs(16)
+        val width = ui.textWidth(text, size, true) + layout.fs(24)
+        val height = ui.lineHeight(size, true) + layout.fs(12)
+        val plate = RectF(
+            layout.board.centerX() - width / 2f, layout.board.bottom - height - layout.cell * 0.2f,
+            layout.board.centerX() + width / 2f, layout.board.bottom - layout.cell * 0.2f,
+        )
+        ui.fill.color = withAlpha(0xFF2E241E.toInt(), 0.92f)
+        canvas.drawRoundRect(plate, height / 2f, height / 2f, ui.fill)
+        ui.text(canvas, text, size, Palette.CREAM, plate.centerX(), plate.centerY(), Ui.Align.CENTER, bold = true, shadow = false)
     }
 
     /** Little posts along the top and bottom rails of the yard fence. */
@@ -604,28 +672,50 @@ class FarmScene(private val game: Game) : Scene {
 
     private fun drawStorage(canvas: Canvas) {
         ui.veil(canvas, layout.w, layout.h)
-        val card = layout.centreCard(0.86f, 0.5f)
-        val inner = ui.panel(canvas, card)
-        ui.text(canvas, "Storage", layout.fs(28), Palette.BARN_RED, inner.centerX(), inner.top + layout.fs(18), Ui.Align.CENTER, bold = true)
 
+        // Sized to the shelf it is showing, like the order card.
         val cols = 4
-        val size = min(inner.width() / cols - layout.gap, inner.height() * 0.30f)
-        val top = inner.top + layout.fs(46)
+        val rows = (STORAGE_SLOTS + cols - 1) / cols
+        val cardW = min(layout.w * 0.86f, layout.w - 2 * layout.margin)
+        val slot = min((cardW * 0.80f - layout.gap * (cols - 1)) / cols, layout.cell * 1.05f)
+        val buttonH = max(38f, layout.fs(46))
+        val content = layout.fs(38) + rows * slot + (rows - 1) * layout.gap +
+            layout.fs(34) + buttonH
+        val cardH = (content * 1.20f).coerceIn(layout.h * 0.30f, layout.h * 0.72f)
+        val card = RectF(
+            (layout.w - cardW) / 2f, (layout.h - cardH) / 2f,
+            (layout.w + cardW) / 2f, (layout.h + cardH) / 2f,
+        )
+        val inner = ui.panel(canvas, card)
+
+        ui.text(canvas, "Storage", layout.fs(28), Palette.BARN_RED, inner.centerX(), inner.top + layout.fs(15), Ui.Align.CENTER, bold = true)
+
+        val gridW = cols * slot + (cols - 1) * layout.gap
+        val left = inner.centerX() - gridW / 2f
+        val top = inner.top + layout.fs(38)
         for (i in 0 until STORAGE_SLOTS) {
             val row = i / cols
             val col = i % cols
-            val rect = RectF(inner.left + col * (size + layout.gap), top + row * (size + layout.gap), inner.left + col * (size + layout.gap) + size, top + row * (size + layout.gap) + size)
+            val rect = RectF(
+                left + col * (slot + layout.gap), top + row * (slot + layout.gap),
+                left + col * (slot + layout.gap) + slot, top + row * (slot + layout.gap) + slot,
+            )
             ui.fill.color = 0xFFD6CEBA.toInt()
-            canvas.drawRoundRect(rect, size * 0.16f, size * 0.16f, ui.fill)
+            canvas.drawRoundRect(rect, slot * 0.16f, slot * 0.16f, ui.fill)
             val item = session.board.storage.getOrNull(i) ?: continue
             ui.hitboxes["slot$i"] = RectF(rect)
             game.sprites.items[spriteKey(item)]?.let { canvas.drawBitmap(it, null, rect, null) }
         }
-        ui.text(canvas, "Tap an item to send it back to the yard", layout.fs(15), Palette.INK_SOFT, inner.centerX(), inner.bottom - layout.fs(58), Ui.Align.CENTER, shadow = false)
-        val buttonH = max(38f, layout.fs(44))
+
+        val caption = if (session.board.storage.isEmpty()) {
+            "Nothing on the shelf yet"
+        } else {
+            "Tap an item to send it back to the yard"
+        }
+        ui.text(canvas, caption, layout.fs(15), Palette.INK_SOFT, inner.centerX(), inner.bottom - buttonH - layout.fs(16), Ui.Align.CENTER, shadow = false)
         ui.button(
             canvas, "storage_close",
-            RectF(inner.centerX() - inner.width() * 0.2f, inner.bottom - buttonH, inner.centerX() + inner.width() * 0.2f, inner.bottom),
+            RectF(inner.centerX() - inner.width() * 0.22f, inner.bottom - buttonH, inner.centerX() + inner.width() * 0.22f, inner.bottom),
             "Close", Palette.WOOD_DARK, 20,
         )
     }

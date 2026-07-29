@@ -200,15 +200,20 @@ class StoryScene(private val game: Game) : Scene {
         val box = RectF(layout.margin, layout.h - layout.margin - boxH, layout.w - layout.margin, layout.h - layout.margin)
         val inner = ui.panel(canvas, box)
 
+        // The portrait peeks over the top-left corner, so the speaker's name has
+        // to start clear of it rather than underneath.
+        var nameLeft = inner.left
         game.sprites.portraitBig[line.portrait]?.let {
             val size = min(it.width.toFloat(), layout.h * 0.16f)
+            val left = box.left + size * 0.15f
             canvas.drawBitmap(
                 it, null,
-                RectF(box.left + size * 0.2f, box.top - size * 0.72f, box.left + size * 1.2f, box.top + size * 0.28f),
+                RectF(left, box.top - size * 0.74f, left + size, box.top + size * 0.26f),
                 null,
             )
+            nameLeft = left + size + layout.fs(10)
         }
-        ui.text(canvas, line.speaker, layout.fs(22), Palette.BARN_RED, inner.left, inner.top + layout.fs(12), bold = true)
+        ui.textFitted(canvas, line.speaker, layout.fs(22), Palette.BARN_RED, nameLeft, inner.top + layout.fs(12), inner.right - nameLeft, bold = true)
         ui.wrapped(canvas, line.text, layout.fs(19), Palette.INK, inner.left, inner.top + layout.fs(30), inner.width())
 
         val hint = if (lineIndex < lines.size - 1) "tap to continue" else "tap to finish"

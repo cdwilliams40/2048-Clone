@@ -35,6 +35,10 @@ six-step ladder, so an unfamiliar item's tier is readable from its silhouette:
 Six chains unlock as you level up — Eggs, Crops, Dairy, Wool, Tools and
 Preserves — each with its own generator.
 
+A ring pulses around the generator on your very first visit, then around your
+first mergeable pair; after that a hint only appears if you have gone quiet for
+a few seconds.
+
 **Customers queue along the top.** Tap one to see what they want; deliver it
 for coins and XP. Skip the ones you can't be bothered with and another
 neighbour wanders up. Coins pay for **renovation tasks**, and finishing a
@@ -115,7 +119,7 @@ Two design choices worth flagging:
 
 ## Verification status
 
-- **Engine: tested.** 46 JUnit tests covering merging, generators, storage,
+- **Engine: tested.** 48 JUnit tests covering merging, generators, storage,
   energy and levelling, order generation and delivery, chapter progression,
   save/load round trips, corrupt-save recovery, the full match-3 rule set, and
   waveform synthesis. Includes a 4000-step grind that drives taps, merges,

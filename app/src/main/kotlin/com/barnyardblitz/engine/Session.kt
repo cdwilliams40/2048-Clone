@@ -25,6 +25,10 @@ class Session(val random: Random = Random.Default) {
         private set
     val bestBlitz: MutableMap<String, Int> = mutableMapOf()
 
+    /** Lifetime merge count. Zero means the player is on their first session. */
+    var merges: Int = 0
+        private set
+
     private val eventQueue: MutableList<GameEvent> = mutableListOf()
 
     val events: List<GameEvent> get() = eventQueue
@@ -64,6 +68,7 @@ class Session(val random: Random = Random.Default) {
     fun drop(src: Cell, dst: Cell): DropResult {
         val result = board.drop(src, dst)
         if (result.kind == DropKind.MERGE && result.item != null) {
+            merges++
             gainXp(maxOf(1, result.item.tier * 2))
         }
         return result
@@ -159,6 +164,7 @@ class Session(val random: Random = Random.Default) {
         "orders" to orders.toJson(),
         "story" to story.toJson(),
         "best_blitz" to bestBlitz,
+        "merges" to merges,
     )
 
     val progressFraction: Float
@@ -187,6 +193,7 @@ class Session(val random: Random = Random.Default) {
             data["best_blitz"].asMap().forEach { (key, value) ->
                 if (value is Number) session.bestBlitz[key] = value.toInt()
             }
+            session.merges = data.int("merges").coerceAtLeast(0)
             session.orders.refill(session.economy.level, random)
             session.placeNewGenerators()
             session.eventQueue.clear()

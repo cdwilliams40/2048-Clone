@@ -150,6 +150,22 @@ class MergeBoard(val rows: Int = BOARD_ROWS, val cols: Int = BOARD_COLS) {
         return false
     }
 
+    /**
+     * Any two items on the board that would merge, or null. Used for the idle
+     * hint and the first-run coaching.
+     */
+    fun findMergePair(): Pair<Cell, Cell>? {
+        val seen = HashMap<Pair<String, Int>, Cell>()
+        for ((cell, item) in occupied()) {
+            if (item.isGenerator || item.tier >= MAX_TIER) continue
+            val key = item.chain to item.tier
+            val other = seen[key]
+            if (other != null) return other to cell
+            seen[key] = cell
+        }
+        return null
+    }
+
     fun has(chain: String, tier: Int, quantity: Int = 1): Boolean {
         val found = count(chain, tier) + storage.count { it.chain == chain && it.tier == tier }
         return found >= quantity
