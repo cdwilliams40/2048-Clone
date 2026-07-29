@@ -246,6 +246,23 @@ private val ITEM_WOOD = 0xFFA6764A.toInt()
 private val ITEM_WOOD_DARK = 0xFF7C5636.toInt()
 private val ITEM_WOOD_LIGHT = 0xFFC69664.toInt()
 
+private fun mix(a: Int, b: Int, t: Float): Int {
+    val inv = 1f - t
+    return android.graphics.Color.argb(
+        255,
+        (android.graphics.Color.red(a) * inv + android.graphics.Color.red(b) * t).toInt().coerceIn(0, 255),
+        (android.graphics.Color.green(a) * inv + android.graphics.Color.green(b) * t).toInt().coerceIn(0, 255),
+        (android.graphics.Color.blue(a) * inv + android.graphics.Color.blue(b) * t).toInt().coerceIn(0, 255),
+    )
+}
+
+/**
+ * Every container used to be the same brown, which made six chains of crates
+ * indistinguishable at a glance. Each chain now names its own container colour;
+ * a little of the original timber is mixed back in so they still read as wood.
+ */
+private fun chainWood(chain: Chain): Int = mix(chain.wood or 0xFF000000.toInt(), ITEM_WOOD, 0.18f)
+
 private fun motif(c: Canvas, chain: Chain, cx: Float, cy: Float, r: Float) {
     val base = chain.base or 0xFF000000.toInt()
     val accent = chain.accent or 0xFF000000.toInt()
@@ -290,10 +307,15 @@ private fun motif(c: Canvas, chain: Chain, cx: Float, cy: Float, r: Float) {
 }
 
 private fun itemShadow(c: Canvas, s: Float) {
-    oval(c, withAlpha(0xFF000000.toInt(), 0.22f), 0.5f * s, 0.90f * s, 0.62f * s, 0.13f * s)
+    // Two stacked ellipses fake a soft shadow without needing a blur.
+    oval(c, withAlpha(0xFF2A3A1E.toInt(), 0.13f), 0.5f * s, 0.905f * s, 0.72f * s, 0.17f * s)
+    oval(c, withAlpha(0xFF2A3A1E.toInt(), 0.22f), 0.5f * s, 0.90f * s, 0.56f * s, 0.11f * s)
 }
 
 private fun container(c: Canvas, s: Float, chain: Chain, tier: Int) {
+    val wood = chainWood(chain)
+    val woodDark = shade(wood, -0.28f)
+    val woodLight = shade(wood, 0.26f)
     when (tier) {
         0 -> motif(c, chain, 0.5f * s, 0.52f * s, 0.21f * s)
         1 -> {
@@ -308,31 +330,31 @@ private fun container(c: Canvas, s: Float, chain: Chain, tier: Int) {
             val body = RectF(0.20f * s, 0.50f * s, 0.80f * s, 0.84f * s)
             val path = Path()
             path.addRoundRect(body, floatArrayOf(0f, 0f, 0f, 0f, 0.2f * s, 0.2f * s, 0.2f * s, 0.2f * s), Path.Direction.CW)
-            val q = p(); q.color = ITEM_WOOD; c.drawPath(path, q)
+            val q = p(); q.color = wood; c.drawPath(path, q)
             for (i in 1 until 4) {
                 val y = body.top + body.height() * i / 4f
-                line(c, shade(ITEM_WOOD, -0.22f), body.left + 2f, y, body.right - 2f, y, max(2f, s * 0.018f))
+                line(c, woodDark, body.left + 2f, y, body.right - 2f, y, max(2f, s * 0.018f))
             }
-            box(c, ITEM_WOOD_LIGHT, RectF(0.16f * s, 0.47f * s, 0.84f * s, 0.56f * s), 0.045f * s)
+            box(c, woodLight, RectF(0.16f * s, 0.47f * s, 0.84f * s, 0.56f * s), 0.045f * s)
         }
         3 -> {
             motif(c, chain, 0.35f * s, 0.34f * s, 0.115f * s)
             motif(c, chain, 0.65f * s, 0.34f * s, 0.115f * s)
             val body = RectF(0.16f * s, 0.42f * s, 0.84f * s, 0.84f * s)
-            box(c, ITEM_WOOD, body, 0.045f * s)
-            outline(c, shade(ITEM_WOOD, -0.28f), body, max(2f, s * 0.028f), 0.045f * s)
+            box(c, wood, body, 0.045f * s)
+            outline(c, woodDark, body, max(2f, s * 0.028f), 0.045f * s)
             for (i in 1 until 3) {
                 val y = body.top + body.height() * i / 3f
-                line(c, shade(ITEM_WOOD, -0.2f), body.left, y, body.right, y, max(2f, s * 0.022f))
+                line(c, shade(wood, -0.2f), body.left, y, body.right, y, max(2f, s * 0.022f))
             }
-            line(c, ITEM_WOOD_LIGHT, body.left, body.bottom, body.right, body.top, max(2f, s * 0.022f))
+            line(c, woodLight, body.left, body.bottom, body.right, body.top, max(2f, s * 0.022f))
         }
         4 -> {
             motif(c, chain, 0.38f * s, 0.28f * s, 0.105f * s)
             motif(c, chain, 0.63f * s, 0.28f * s, 0.105f * s)
             val body = RectF(0.14f * s, 0.36f * s, 0.86f * s, 0.68f * s)
-            box(c, ITEM_WOOD, body, 0.04f * s)
-            outline(c, shade(ITEM_WOOD, -0.28f), body, max(2f, s * 0.026f), 0.04f * s)
+            box(c, wood, body, 0.04f * s)
+            outline(c, woodDark, body, max(2f, s * 0.026f), 0.04f * s)
             line(c, ITEM_WOOD_DARK, 0.84f * s, 0.52f * s, 0.96f * s, 0.40f * s, max(3f, s * 0.035f))
             listOf(0.30f, 0.70f).forEach { x ->
                 oval(c, 0xFF3E342E.toInt(), x * s, 0.75f * s, 0.23f * s, 0.23f * s)
@@ -340,7 +362,7 @@ private fun container(c: Canvas, s: Float, chain: Chain, tier: Int) {
             }
         }
         else -> {
-            val base = shade(chain.accent or 0xFF000000.toInt(), -0.05f)
+            val base = shade(chain.wood or 0xFF000000.toInt(), 0.05f)
             poly(c, shade(base, -0.25f), listOf(0.08f * s to 0.42f * s, 0.5f * s to 0.14f * s, 0.92f * s to 0.42f * s))
             box(c, base, RectF(0.16f * s, 0.42f * s, 0.84f * s, 0.86f * s))
             val door = RectF(0.40f * s, 0.58f * s, 0.60f * s, 0.86f * s)
@@ -359,7 +381,7 @@ private fun container(c: Canvas, s: Float, chain: Chain, tier: Int) {
 private fun generator(c: Canvas, s: Float, chain: Chain) {
     box(c, ITEM_WOOD_DARK, RectF(0.44f * s, 0.52f * s, 0.56f * s, 0.88f * s), 0.03f * s)
     val board = RectF(0.12f * s, 0.20f * s, 0.88f * s, 0.60f * s)
-    box(c, shade(chain.accent or 0xFF000000.toInt(), -0.1f), board, 0.09f * s)
+    box(c, shade(chain.wood or 0xFF000000.toInt(), -0.05f), board, 0.09f * s)
     box(
         c, Palette.CREAM,
         RectF(board.left + s * 0.045f, board.top + s * 0.045f, board.right - s * 0.045f, board.bottom - s * 0.045f),

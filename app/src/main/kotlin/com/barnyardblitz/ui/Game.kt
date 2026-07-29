@@ -3,7 +3,6 @@ package com.barnyardblitz.ui
 import android.graphics.Canvas
 import android.graphics.RectF
 import com.barnyardblitz.art.Sprites
-import com.barnyardblitz.audio.SfxPlayer
 import com.barnyardblitz.data.SaveStore
 import com.barnyardblitz.engine.BOARD_COLS
 import com.barnyardblitz.engine.BOARD_ROWS
@@ -20,7 +19,7 @@ private const val AUTOSAVE_SECONDS = 20f
  * Holds everything the scenes share - the save session, artwork, audio, the
  * particle system - and owns the switch between the three screens.
  */
-class Game(private val store: SaveStore, val sfx: SfxPlayer) {
+class Game(private val store: SaveStore, val sfx: Audio) {
 
     val random = Random(System.nanoTime())
     val ui = Ui()
@@ -117,24 +116,30 @@ class Game(private val store: SaveStore, val sfx: SfxPlayer) {
         }
     }
 
-    /** Snackbars stacked up from the button bar, clear of the playfield. */
+    /** Snackbars stacked up from the bottom, centred on the playfield. */
     private fun drawToasts(canvas: Canvas) {
         if (toasts.isEmpty()) return
-        val anchor = scene.let { current ->
-            when (current) {
-                is BlitzScene -> blitzLayout.bar?.top ?: (height - blitzLayout.margin)
-                else -> farmLayout.bar.top
-            }
-        } - farmLayout.gap
-        var y = anchor
+        val blitz = scene is BlitzScene
+        val portrait = if (blitz) blitzLayout.portrait else farmLayout.portrait
+        val margin = if (blitz) blitzLayout.margin else farmLayout.margin
+        val gap = if (blitz) blitzLayout.gap else farmLayout.gap
+        // In portrait the button bar is the natural floor. In landscape the bar
+        // sits in the side panel, so anchoring to it would drop toasts across
+        // the middle of the board instead.
+        val floor = if (portrait) {
+            (if (blitz) blitzLayout.bar?.top ?: (height - margin) else farmLayout.bar.top) - gap * 2f
+        } else {
+            height - margin - gap
+        }
+        val centreX = if (blitz) blitzLayout.board.centerX() else farmLayout.board.centerX()
+        var y = floor
         for (index in toasts.indices.reversed()) {
             val toast = toasts[index]
             val alpha = minOf(1f, toast.life / 0.5f)
             val size = ui.fs(17)
-            val textWidth = ui.textWidth(toast.text, size, true)
             val plateH = ui.lineHeight(size, true) + ui.fs(12)
-            val plateW = textWidth + ui.fs(26)
-            val rect = RectF(width / 2f - plateW / 2f, y - plateH, width / 2f + plateW / 2f, y)
+            val plateW = ui.textWidth(toast.text, size, true) + ui.fs(26)
+            val rect = RectF(centreX - plateW / 2f, y - plateH, centreX + plateW / 2f, y)
             ui.fill.color = withAlpha(0xFF2E241E.toInt(), 0.86f * alpha)
             canvas.drawRoundRect(rect, plateH / 2f, plateH / 2f, ui.fill)
             ui.text(
@@ -164,10 +169,8 @@ class Game(private val store: SaveStore, val sfx: SfxPlayer) {
     fun draw(canvas: Canvas) {
         if (!sizeReady) return
         ui.resetFrame()
-        val dx = effects.offsetX()
-        val dy = effects.offsetY()
         canvas.save()
-        canvas.translate(dx, dy)
+        canvas.translate(effects.offsetX(), effects.offsetY())
         sprites.background?.let { canvas.drawBitmap(it, 0f, 0f, null) }
         scene.draw(canvas)
         drawToasts(canvas)
@@ -176,15 +179,22 @@ class Game(private val store: SaveStore, val sfx: SfxPlayer) {
 
     // ------------------------------------------------------------------- input
     fun onDown(x: Float, y: Float) {
-        if (sizeReady) scene.onDown(x, y)
+        if (!sizeReady) return
+        ui.pressedKey = ui.hitAny(x, y)
+        scene.onDown(x, y)
     }
 
     fun onMove(x: Float, y: Float) {
-        if (sizeReady) scene.onMove(x, y)
+        if (!sizeReady) return
+        // Sliding off a button releases it, the way a real button behaves.
+        if (ui.pressedKey != null && ui.hitAny(x, y) != ui.pressedKey) ui.pressedKey = null
+        scene.onMove(x, y)
     }
 
     fun onUp(x: Float, y: Float) {
-        if (sizeReady) scene.onUp(x, y)
+        if (!sizeReady) return
+        ui.pressedKey = null
+        scene.onUp(x, y)
     }
 
     /** Returns true when the game handled it; false means "leave the app". */

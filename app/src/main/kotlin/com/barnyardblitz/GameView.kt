@@ -5,7 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.view.MotionEvent
 import android.view.View
-import com.barnyardblitz.audio.SfxPlayer
+import com.barnyardblitz.ui.Audio
 import com.barnyardblitz.data.SaveStore
 import com.barnyardblitz.ui.Game
 
@@ -16,9 +16,9 @@ import com.barnyardblitz.ui.Game
  * plain View that re-posts itself on the animation clock is a better fit (and a
  * far smaller dependency footprint) than a declarative UI toolkit.
  */
-class GameView(context: Context, sfx: SfxPlayer) : View(context) {
+class GameView(context: Context, sfx: Audio) : View(context) {
 
-    val game = Game(SaveStore(context), sfx)
+    val game = Game(SaveStore(context.filesDir), sfx)
 
     private var lastFrameNanos = 0L
     private var running = true

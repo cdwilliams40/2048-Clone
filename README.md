@@ -100,6 +100,7 @@ app/src/main/kotlin/com/barnyardblitz/
   data/SaveStore.kt        atomic save file handling
 app/src/test/kotlin/       engine unit tests (JUnit)
 tools/LayoutCheck.kt       geometry sanity check across screen sizes
+tools/preview/            renders the real screens to PNG on a desktop JVM
 ```
 
 Two design choices worth flagging:
@@ -119,11 +120,13 @@ Two design choices worth flagging:
   save/load round trips, corrupt-save recovery, the full match-3 rule set, and
   waveform synthesis. Includes a 4000-step grind that drives taps, merges,
   deliveries and tasks while asserting nothing goes negative. `./gradlew test`.
-- **App layer: type-checked, not yet run.** The full UI, art and audio code
-  compiles cleanly against the Android 14 API, and `tools/LayoutCheck.kt`
-  verifies the layout geometry across ten screen sizes (portrait, landscape,
-  phone and tablet), including that every board cell round-trips through the
-  hit test.
+- **App layer: type-checked and rendered, not yet run on a device.** The full
+  UI, art and audio code compiles cleanly against the Android 14 API.
+  `tools/LayoutCheck.kt` verifies the layout geometry across ten screen sizes
+  (portrait, landscape, phone and tablet), including that every board cell
+  round-trips through the hit test. `tools/preview/` renders the real screens
+  to PNG on a desktop JVM through a Java2D stand-in for `android.graphics`,
+  which is how the artwork and layout were iterated on.
 - **Not yet verified: the Gradle build itself, resource linking, and runtime
   behaviour on a device.** The environment this was written in blocks
   `dl.google.com`, so the Android SDK and Gradle plugin could not be fetched
@@ -131,5 +134,6 @@ Two design choices worth flagging:
   and its first run is what will confirm the build.
 
 `tools/LayoutCheck.kt` needs a real Android runtime jar to run off-device
-(`org.robolectric:android-all` from Maven Central works); on a machine with the
-SDK it is simpler to just build and look at it.
+(`org.robolectric:android-all` from Maven Central works). `tools/preview/` has
+its own README covering how to render screens and where it differs from a real
+device.

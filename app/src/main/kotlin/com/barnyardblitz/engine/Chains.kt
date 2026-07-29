@@ -32,6 +32,12 @@ data class Chain(
     /** Base and accent colours as 0xRRGGBB, used by the item artwork. */
     val base: Int,
     val accent: Int,
+    /**
+     * Colour of this chain's crates and carts. Chosen per chain rather than
+     * derived from [accent], because two chains can share an accent (crops and
+     * preserves are both green) and their containers must never look alike.
+     */
+    val wood: Int,
     val unlockLevel: Int,
     val generator: GeneratorDef,
 ) {
@@ -43,32 +49,32 @@ object Chains {
         chain(
             "eggs", "Eggs",
             listOf("Egg", "Egg Trio", "Egg Basket", "Egg Crate", "Egg Cart", "Henhouse"),
-            Motif.EGG, 0xFAF0D6, 0xE8C46C, 1, "Nest Box", 1,
+            Motif.EGG, 0xFAF0D6, 0xE8C46C, 0xC08A46, 1, "Nest Box", 1,
         ),
         chain(
             "crops", "Crops",
             listOf("Corn Cob", "Corn Bundle", "Corn Basket", "Produce Crate", "Harvest Cart", "Grain Silo"),
-            Motif.CORN, 0xF6CE4A, 0x7EB054, 2, "Veg Patch", 1,
+            Motif.CORN, 0xF6CE4A, 0x7EB054, 0x6E9A46, 2, "Veg Patch", 1,
         ),
         chain(
             "milk", "Dairy",
             listOf("Milk Bottle", "Milk Trio", "Milk Churn", "Dairy Crate", "Milk Float", "Creamery"),
-            Motif.BOTTLE, 0xF8FAFC, 0x6096CE, 4, "Milking Stall", 2,
+            Motif.BOTTLE, 0xF8FAFC, 0x6096CE, 0x5286BE, 4, "Milking Stall", 2,
         ),
         chain(
             "wool", "Wool",
             listOf("Wool Puff", "Wool Bundle", "Yarn Basket", "Wool Crate", "Wool Wagon", "Spinning Shed"),
-            Motif.WOOL, 0xECE8F0, 0xA88EC8, 6, "Shearing Post", 2,
+            Motif.WOOL, 0xECE8F0, 0xA88EC8, 0x9078B8, 6, "Shearing Post", 2,
         ),
         chain(
             "tools", "Tools",
             listOf("Nail", "Bolt Bundle", "Tool Bucket", "Tool Crate", "Tool Cart", "Workshop"),
-            Motif.TOOL, 0xB0B6BE, 0xC4583E, 8, "Tool Rack", 3,
+            Motif.TOOL, 0xB0B6BE, 0xC4583E, 0x8A8F98, 8, "Tool Rack", 3,
         ),
         chain(
             "jam", "Preserves",
             listOf("Berry", "Berry Bunch", "Jam Jar", "Preserve Crate", "Bakery Cart", "Farm Kitchen"),
-            Motif.BERRY, 0xBC4A84, 0x78A85C, 10, "Jam Pot", 3,
+            Motif.BERRY, 0xBC4A84, 0x78A85C, 0xA8506E, 10, "Jam Pot", 3,
         ),
     )
 
@@ -85,9 +91,9 @@ object Chains {
 
     private fun chain(
         key: String, name: String, tiers: List<String>, motif: Motif,
-        base: Int, accent: Int, unlock: Int, generatorName: String, energy: Int,
+        base: Int, accent: Int, wood: Int, unlock: Int, generatorName: String, energy: Int,
     ) = Chain(
-        key, name, tiers, motif, base, accent, unlock,
+        key, name, tiers, motif, base, accent, wood, unlock,
         GeneratorDef("${key}_gen", generatorName, energy, 0.18),
     )
 }

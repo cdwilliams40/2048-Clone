@@ -132,9 +132,14 @@ class StoryScene(private val game: Game) : Scene {
         } else {
             "Chapter ${story.chapter + 1} of ${CHAPTERS.size}"
         }
-        ui.text(canvas, title, layout.fs(27), Palette.CREAM, header.left + layout.fs(14), header.top + layout.fs(24), bold = true)
+        // Reserve the coin counter's width before fitting the title, or a long
+        // chapter name runs straight through it.
+        val coins = "${formatCoins(session.economy.coins)} coins"
+        val coinsWidth = ui.textWidth(coins, layout.fs(18), true)
+        ui.text(canvas, coins, layout.fs(18), Palette.GOLD, header.right - layout.fs(14), header.top + layout.fs(22), Ui.Align.RIGHT, bold = true)
+        val titleRoom = header.width() - layout.fs(28) - coinsWidth - layout.fs(12)
+        ui.textFitted(canvas, title, layout.fs(27), Palette.CREAM, header.left + layout.fs(14), header.top + layout.fs(24), titleRoom, bold = true)
         ui.text(canvas, step, layout.fs(15), Palette.GOLD, header.left + layout.fs(14), header.top + layout.fs(50))
-        ui.text(canvas, "${formatCoins(session.economy.coins)} coins", layout.fs(20), Palette.GOLD, header.right - layout.fs(14), header.centerY(), Ui.Align.RIGHT, bold = true)
 
         var y = header.bottom + layout.gap * 2
         y += ui.wrapped(canvas, blurb, layout.fs(17), Palette.INK, m + layout.fs(6), y, layout.w - 2 * m - layout.fs(12))
@@ -148,8 +153,9 @@ class StoryScene(private val game: Game) : Scene {
             // Size the card to its text rather than to the screen, or a tall
             // phone gives every task a near-empty slab.
             val cardH = max(70f, min(layout.fs(86), available / tasks.size - layout.gap))
-            val block = cardH * tasks.size + layout.gap * (tasks.size - 1)
-            val top = y + max(0f, (available - block) / 3f)
+            // Sit the jobs right under the blurb; a centred block on a tall
+            // phone strands them in the middle of nowhere.
+            val top = y + layout.gap
             tasks.forEachIndexed { i, task ->
                 drawTask(canvas, i, RectF(m, top + i * (cardH + layout.gap), layout.w - m, top + i * (cardH + layout.gap) + cardH), task)
             }

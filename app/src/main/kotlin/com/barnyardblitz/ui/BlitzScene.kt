@@ -1,7 +1,10 @@
 package com.barnyardblitz.ui
 
 import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Shader
 import com.barnyardblitz.art.tileKey
 import com.barnyardblitz.engine.Cell
 import com.barnyardblitz.engine.MatchResult
@@ -25,6 +28,12 @@ private const val POINTS_PER_TILE = 40
 private const val MAX_CASCADE = 10
 
 private val SPECIAL_BONUS = mapOf("egg" to 250, "hay" to 500, "rooster" to 1000)
+
+private val SPECIAL_ROWS = listOf(
+    "4 in a row" to "Golden Egg",
+    "L or T shape" to "Hay Bale",
+    "5 in a row" to "Prize Rooster",
+)
 
 /**
  * The match-3 round, now a minigame that pays out energy and coins for the farm.
@@ -538,12 +547,21 @@ class BlitzScene(private val game: Game) : Scene {
 
     private fun drawBoard(canvas: Canvas) {
         ui.plank(canvas, layout.frame, Palette.WOOD, max(8f, layout.framePad * 2f))
+
+        val bedRadius = layout.tile * 0.16f
+        ui.fill.color = 0xFF8FB874.toInt()
+        canvas.drawRoundRect(layout.board, bedRadius, bedRadius, ui.fill)
+        val inset = layout.tile * 0.04f
+        val padRadius = layout.tile * 0.18f
         for (r in 0 until layout.rows) {
             for (c in 0 until layout.cols) {
+                val rect = layout.tileRect(r, c)
+                rect.inset(inset, inset)
                 ui.fill.color = if ((r + c) % 2 == 0) Palette.BLITZ_CELL_LIGHT else Palette.BLITZ_CELL_DARK
-                canvas.drawRect(layout.tileRect(r, c), ui.fill)
+                canvas.drawRoundRect(rect, padRadius, padRadius, ui.fill)
             }
         }
+        drawBoardShading(canvas, bedRadius)
 
         canvas.save()
         canvas.clipRect(layout.board)
@@ -598,12 +616,33 @@ class BlitzScene(private val game: Game) : Scene {
         canvas.restore()
     }
 
+    /** Matches the yard: a soft dip at the top and bottom of the bed. */
+    private fun drawBoardShading(canvas: Canvas, radius: Float) {
+        val depth = layout.tile * 0.5f
+        canvas.save()
+        val clip = Path()
+        clip.addRoundRect(layout.board, radius, radius, Path.Direction.CW)
+        canvas.clipPath(clip)
+        ui.fill.shader = LinearGradient(
+            0f, layout.board.top, 0f, layout.board.top + depth,
+            withAlpha(0xFF3E5A2A.toInt(), 0.20f), withAlpha(0xFF3E5A2A.toInt(), 0f), Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(RectF(layout.board.left, layout.board.top, layout.board.right, layout.board.top + depth), ui.fill)
+        ui.fill.shader = LinearGradient(
+            0f, layout.board.bottom - depth, 0f, layout.board.bottom,
+            withAlpha(0xFF3E5A2A.toInt(), 0f), withAlpha(0xFF3E5A2A.toInt(), 0.18f), Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(RectF(layout.board.left, layout.board.bottom - depth, layout.board.right, layout.board.bottom), ui.fill)
+        ui.fill.shader = null
+        canvas.restore()
+    }
+
     private fun drawHud(canvas: Canvas) {
         ui.plank(canvas, layout.header, Palette.BARN_RED)
         val pad = layout.header.width() * 0.025f
         if (layout.portrait) {
             ui.text(canvas, "BARNYARD BLITZ", layout.fs(24), Palette.CREAM, layout.header.left + pad, layout.header.centerY(), bold = true)
-            ui.text(canvas, formatCoins(score), layout.fs(30), Palette.GOLD, layout.header.right - pad, layout.header.centerY(), Ui.Align.RIGHT, bold = true)
+            ui.text(canvas, formatCoins(score), layout.fs(30), Palette.GOLD, layout.header.right - pad * 1.6f, layout.header.centerY(), Ui.Align.RIGHT, bold = true)
         } else {
             ui.text(canvas, "BARNYARD BLITZ", layout.fs(34), Palette.CREAM, layout.header.left + pad, layout.header.centerY(), bold = true)
             val anchor = layout.header.right - layout.header.width() * 0.13f
@@ -638,22 +677,40 @@ class BlitzScene(private val game: Game) : Scene {
 
     private fun drawInfo(canvas: Canvas, area: RectF) {
         val onWood = !layout.portrait
-        val label = if (onWood) Palette.CREAM else Palette.INK
-        val accent = if (onWood) Palette.GOLD else Palette.BARN_RED
-        var y = area.top + layout.fs(10)
-        ui.text(canvas, "${mode.uppercase()} MODE", layout.fs(18), label, area.centerX(), y, Ui.Align.CENTER)
-        y += layout.fs(28)
-        for ((shape, name) in listOf("4 in a row" to "Golden Egg", "L or T shape" to "Hay Bale", "5 in a row" to "Prize Rooster")) {
-            if (y + layout.fs(20) > area.bottom) return
-            ui.text(canvas, shape, layout.fs(16), label, area.left, y, shadow = false)
-            ui.text(canvas, name, layout.fs(16), accent, area.left + area.width() * 0.44f, y, shadow = false)
-            y += layout.fs(22)
+        if (onWood) {
+            // Landscape draws this straight onto the wooden side panel.
+            var y = area.top + layout.fs(10)
+            ui.text(canvas, "${mode.uppercase()} MODE", layout.fs(18), Palette.CREAM, area.centerX(), y, Ui.Align.CENTER)
+            y += layout.fs(28)
+            for ((shape, name) in SPECIAL_ROWS) {
+                if (y + layout.fs(20) > area.bottom) return
+                ui.text(canvas, shape, layout.fs(16), Palette.CREAM, area.left, y, shadow = false)
+                ui.text(canvas, name, layout.fs(16), Palette.GOLD, area.left + area.width() * 0.44f, y, shadow = false)
+                y += layout.fs(22)
+            }
+            y += layout.fs(8)
+            for (line in listOf("Moves  $movesMade", "Best chain  x$bestCascade")) {
+                if (y + layout.fs(20) > area.bottom) return
+                ui.text(canvas, line, layout.fs(16), Palette.CREAM, area.left, y, shadow = false)
+                y += layout.fs(22)
+            }
+            return
         }
-        y += layout.fs(8)
-        for (line in listOf("Moves  $movesMade", "Best chain  x$bestCascade")) {
-            if (y + layout.fs(20) > area.bottom) return
-            ui.text(canvas, line, layout.fs(16), label, area.left, y, shadow = false)
-            y += layout.fs(22)
+
+        // Portrait: a proper card, so the rules do not float loose on the sky.
+        val height = min(area.height() - layout.gap, layout.fs(150))
+        val card = RectF(area.left, area.centerY() - height / 2f, area.right, area.centerY() + height / 2f)
+        ui.plank(canvas, card, Palette.CREAM)
+        val pad = layout.fs(12)
+        var y = card.top + pad + layout.fs(9)
+        ui.text(canvas, "${mode.uppercase()} MODE", layout.fs(17), Palette.BARN_RED, card.left + pad, y, bold = true, shadow = false)
+        ui.text(canvas, "moves $movesMade   best chain x$bestCascade", layout.fs(13), Palette.INK_SOFT, card.right - pad, y, Ui.Align.RIGHT, shadow = false)
+        y += layout.fs(24)
+        for ((shape, name) in SPECIAL_ROWS) {
+            if (y + layout.fs(18) > card.bottom - pad) return
+            ui.text(canvas, shape, layout.fs(15), Palette.INK, card.left + pad, y, shadow = false)
+            ui.text(canvas, name, layout.fs(15), Palette.BARN_RED, card.left + card.width() * 0.46f, y, bold = true, shadow = false)
+            y += layout.fs(21)
         }
     }
 

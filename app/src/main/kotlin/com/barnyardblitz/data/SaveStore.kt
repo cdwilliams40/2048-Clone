@@ -1,6 +1,5 @@
 package com.barnyardblitz.data
 
-import android.content.Context
 import com.barnyardblitz.engine.Json
 import com.barnyardblitz.engine.Session
 import java.io.File
@@ -12,10 +11,10 @@ import java.io.File
  * none at all. Writes go to a temporary file first so a kill mid-write cannot
  * leave a half-written save behind.
  */
-class SaveStore(context: Context) {
+class SaveStore(directory: File) {
 
-    private val file = File(context.filesDir, "farm.json")
-    private val temp = File(context.filesDir, "farm.json.tmp")
+    private val file = File(directory, "farm.json")
+    private val temp = File(directory, "farm.json.tmp")
 
     fun read(): String? = try {
         if (file.exists()) file.readText(Charsets.UTF_8) else null

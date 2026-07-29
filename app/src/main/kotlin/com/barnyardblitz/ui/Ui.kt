@@ -81,9 +81,14 @@ class Ui {
     /** Scale factor applied to every font size; set from the active layout. */
     var scale: Float = 1f
 
+    /** Which button is under the finger right now, so it can look pressed. */
+    var pressedKey: String? = null
+
     fun resetFrame() {
         hitboxes.clear()
         disabled.clear()
+        // pressedKey deliberately survives: it is owned by the touch sequence,
+        // not by the frame.
     }
 
     fun fs(base: Int): Float = max(9f, base * scale)
@@ -100,6 +105,10 @@ class Ui {
 
     fun hit(key: String, x: Float, y: Float): Boolean =
         key !in disabled && hitboxes[key]?.contains(x, y) == true
+
+    /** The topmost enabled button under a point, if any. */
+    fun hitAny(x: Float, y: Float): String? =
+        hitboxes.entries.lastOrNull { it.key !in disabled && it.value.contains(x, y) }?.key
 
     // ---------------------------------------------------------------- widgets
     /** A wooden board with a capped drop shadow and a lit top edge. */
@@ -189,6 +198,27 @@ class Ui {
         return step * lines.size
     }
 
+    /**
+     * Draw [value] shrunk just enough to fit [maxWidth]. Names and titles vary
+     * in length, and clipping one is worse than setting it a point smaller.
+     */
+    fun textFitted(
+        canvas: Canvas,
+        value: String,
+        size: Float,
+        color: Int,
+        x: Float,
+        y: Float,
+        maxWidth: Float,
+        align: Align = Align.LEFT,
+        bold: Boolean = false,
+        shadow: Boolean = true,
+    ): Float {
+        var fitted = size
+        while (fitted > 8f && textWidth(value, fitted, bold) > maxWidth) fitted -= 1f
+        return text(canvas, value, fitted, color, x, y, align, bold, shadow)
+    }
+
     fun button(
         canvas: Canvas,
         key: String,
@@ -207,12 +237,16 @@ class Ui {
             face = shade(color, -0.35f)
             ink = shade(textColor, -0.35f)
         }
-        plank(canvas, rect, face)
+        // A pressed button sinks into its own shadow, which is the cheapest
+        // possible "the tap landed" signal and costs no animation state.
+        val pressed = enabled && key == pressedKey
+        val target = if (pressed) RectF(rect.left, rect.top + fs(3), rect.right, rect.bottom + fs(3)) else rect
+        plank(canvas, target, if (pressed) shade(face, -0.10f) else face)
         var fontSize = fs(size)
         // Shrink rather than overflow when a label is long for its button.
-        val room = rect.width() * 0.88f
+        val room = target.width() * 0.88f
         while (fontSize > 9f && textWidth(label, fontSize, true) > room) fontSize -= 1f
-        text(canvas, label, fontSize, ink, rect.centerX(), rect.centerY(), Align.CENTER, bold = true)
+        text(canvas, label, fontSize, ink, target.centerX(), target.centerY(), Align.CENTER, bold = true)
     }
 
     fun meter(canvas: Canvas, rect: RectF, fraction: Float, color: Int, track: Int = 0xFFCEC4B0.toInt()) {

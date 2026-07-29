@@ -5,6 +5,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import com.barnyardblitz.engine.Sfx
+import com.barnyardblitz.ui.Audio
 
 /**
  * Plays the procedurally generated effects through AudioTrack.
@@ -13,12 +14,12 @@ import com.barnyardblitz.engine.Sfx
  * ready (and on any device where audio cannot be opened) every call is a no-op,
  * so sound never blocks or crashes the game.
  */
-class SfxPlayer {
+class SfxPlayer : Audio {
 
     private val tracks = HashMap<String, AudioTrack>()
     @Volatile private var ready = false
 
-    var muted: Boolean = false
+    override var muted: Boolean = false
         private set
 
     /** Build every waveform. Safe to call from a worker thread. */
@@ -64,7 +65,7 @@ class SfxPlayer {
         null
     }
 
-    fun play(name: String, volume: Float = 1f) {
+    override fun play(name: String, volume: Float) {
         if (!ready || muted) return
         val track = synchronized(tracks) { tracks[name] } ?: return
         try {
@@ -78,7 +79,7 @@ class SfxPlayer {
     }
 
     /** Returns the new muted state. */
-    fun toggleMute(): Boolean {
+    override fun toggleMute(): Boolean {
         muted = !muted
         return muted
     }
