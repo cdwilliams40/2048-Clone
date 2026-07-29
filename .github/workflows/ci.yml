@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # Only main on push: a branch with an open PR is already covered by the
+  # pull_request event, and matching both ran everything twice - including two
+  # emulator matrices - because the two events have different refs and so land
+  # in different concurrency groups.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -107,7 +111,12 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+      # The default package set includes the obsolete "Android SDK Tools",
+      # whose download is retired and intermittently serves a corrupt zip.
+      # Nothing here needs it; AGP fetches the platform and build-tools itself.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Assemble
         run: ./gradlew --no-daemon assemble${{ inputs.build_type == 'release' && 'Release' || 'Debug' }}
@@ -136,7 +145,12 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+      # The default package set includes the obsolete "Android SDK Tools",
+      # whose download is retired and intermittently serves a corrupt zip.
+      # Nothing here needs it; AGP fetches the platform and build-tools itself.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Enable KVM
