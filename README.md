@@ -18,8 +18,17 @@ the APK, just a launcher icon.
 ```
 
 Needs JDK 17 and the Android SDK (compileSdk 34). Minimum device is Android
-8.0 (API 26). CI builds the APK and uploads it as an artifact — see the
-*Android* workflow.
+8.0 (API 26).
+
+Most checks need neither the SDK nor a device:
+
+```bash
+./scripts/offline-checks.sh   # type-check, layout geometry, render every screen
+```
+
+It fetches a Kotlin compiler and an Android runtime jar on first run, then
+type-checks the whole app, verifies the layout across ten screen sizes, and
+writes every screen to `build/preview/`.
 
 ## The loop
 
@@ -102,7 +111,9 @@ app/src/main/kotlin/com/barnyardblitz/
   art/Sprites.kt           every sprite, drawn to bitmaps at run time
   audio/SfxPlayer.kt       AudioTrack playback of the synthesised effects
   data/SaveStore.kt        atomic save file handling
-app/src/test/kotlin/       engine unit tests (JUnit)
+app/src/test/kotlin/       engine unit tests (JUnit, no device)
+app/src/androidTest/       instrumented smoke test (needs a device)
+scripts/offline-checks.sh  everything checkable without the Android SDK
 tools/LayoutCheck.kt       geometry sanity check across screen sizes
 tools/preview/            renders the real screens to PNG on a desktop JVM
 ```
@@ -116,6 +127,23 @@ Two design choices worth flagging:
   declarative toolkit. The game is immediate-mode by nature, which makes a
   canvas a better fit, keeps the APK free of third-party dependencies, and
   makes the drawing code a direct port of the geometry it replaces.
+
+## CI
+
+One workflow, five jobs:
+
+| Job | What it proves | Needs |
+| --- | --- | --- |
+| **Type-check, layout and screens** | The app compiles against the real Android API, the layout holds at ten sizes, and every screen still renders — with the PNGs uploaded so a push can be eyeballed | nothing but a JDK |
+| **Engine unit tests** | The rules are correct | JDK |
+| **Android lint** | No lint errors | SDK |
+| **Build APK** | It packages, and the artifact is downloadable | SDK |
+| **Smoke test (API 26 and 34)** | It launches on a real Android runtime, keeps drawing, takes a touch that spends energy, writes its save, and survives a recreate | emulator |
+
+The first job is the one that catches most regressions, and it runs in a couple
+of minutes without the SDK. The emulator job is the only place the lifecycle,
+touch and save paths are exercised for real, which is why it runs at both ends
+of the supported API range.
 
 ## Verification status
 
@@ -134,8 +162,10 @@ Two design choices worth flagging:
 - **Not yet verified: the Gradle build itself, resource linking, and runtime
   behaviour on a device.** The environment this was written in blocks
   `dl.google.com`, so the Android SDK and Gradle plugin could not be fetched
-  and no APK has been produced. The CI workflow is the intended way to get one,
-  and its first run is what will confirm the build.
+  and no APK has been produced. The three SDK-dependent CI jobs — lint, APK and
+  the emulator smoke test — have therefore never run, and the instrumented test
+  under `app/src/androidTest/` has never been compiled. Their first run is what
+  will confirm them.
 
 `tools/LayoutCheck.kt` needs a real Android runtime jar to run off-device
 (`org.robolectric:android-all` from Maven Central works). `tools/preview/` has

@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: Which APK to assemble
+        required: true
+        default: debug
+        type: choice
+        options: [debug, release]
+
+# A newer push to the same branch makes the running one irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '17'
+
+jobs:
+  # The cheapest and broadest check: no Android SDK, no emulator. It compiles
+  # the whole app against a real Android runtime jar, verifies the layout
+  # geometry, and renders every screen to PNG. Usually finishes before the
+  # SDK-based jobs have finished downloading.
+  offline-checks:
+    name: Type-check, layout and screens
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Cache the Kotlin compiler and Android runtime jar
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/offline/kotlinc
+            build/offline/libs
+          key: offline-tools-${{ hashFiles('scripts/offline-checks.sh') }}
+
+      - name: Run the offline checks
+        run: ./scripts/offline-checks.sh
+
+      # The screenshots are the point: every push leaves a set you can open and
+      # compare against the previous run.
+      - name: Upload rendered screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens
+          path: build/preview/*.png
+          if-no-files-found: error
+
+  unit-tests:
+    name: Engine unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run the tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/
+
+  lint:
+    name: Android lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew --no-daemon lintDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-*.html
+
+  apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble
+        run: ./gradlew --no-daemon assemble${{ inputs.build_type == 'release' && 'Release' || 'Debug' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: barnyard-blitz-apk
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+  # The only check that needs a real Android runtime: that the app launches,
+  # keeps drawing, takes a touch and writes its save. Both ends of the
+  # supported range are covered because API 26 and 34 differ in ways the
+  # emulator is the only place to catch.
+  emulator:
+    name: Smoke test (API ${{ matrix.api-level }})
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [26, 34]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the instrumented smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: ${{ matrix.api-level >= 30 && 'google_apis' || 'default' }}
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./gradlew --no-daemon connectedDebugAndroidTest
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instrumented-report-api${{ matrix.api-level }}
+          path: app/build/reports/androidTests/

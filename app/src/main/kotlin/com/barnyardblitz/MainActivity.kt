@@ -12,16 +12,18 @@ import com.barnyardblitz.audio.SfxPlayer
  */
 class MainActivity : Activity() {
 
-    private lateinit var view: GameView
+    /** Exposed for the instrumented smoke test. */
+    internal lateinit var gameView: GameView
+        private set
     private val sfx = SfxPlayer()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        view = GameView(this, sfx)
-        view.game.onQuit = { finish() }
-        setContentView(view)
+        gameView = GameView(this, sfx)
+        gameView.game.onQuit = { finish() }
+        setContentView(gameView)
 
         // Synthesising every waveform takes a moment; keep it off the UI thread.
         Thread({ sfx.warmUp() }, "sfx-warmup").apply { isDaemon = true }.start()
@@ -29,19 +31,19 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        view.onResumed()
+        gameView.onResumed()
     }
 
     override fun onPause() {
         // Flush the save before the system can drop us.
-        view.onPaused()
+        gameView.onPaused()
         super.onPause()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (view.handleBack()) return true
-            view.game.save()
+            if (gameView.handleBack()) return true
+            gameView.game.save()
         }
         return super.onKeyDown(keyCode, event)
     }

@@ -43,6 +43,10 @@ class Game(private val store: SaveStore, val sfx: Audio) {
     private var saveTimer = 0f
     private var sizeReady = false
 
+    /** Frames drawn since launch. The instrumented smoke test asserts on it. */
+    var framesDrawn: Long = 0L
+        private set
+
     val farmScene = FarmScene(this)
     val blitzScene = BlitzScene(this)
     val storyScene = StoryScene(this)
@@ -168,6 +172,7 @@ class Game(private val store: SaveStore, val sfx: Audio) {
 
     fun draw(canvas: Canvas) {
         if (!sizeReady) return
+        framesDrawn++
         ui.resetFrame()
         canvas.save()
         canvas.translate(effects.offsetX(), effects.offsetY())

@@ -13,6 +13,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "3.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -45,6 +46,9 @@ android {
         getByName("test") {
             java.srcDirs("src/test/kotlin")
         }
+        getByName("androidTest") {
+            java.srcDirs("src/androidTest/kotlin")
+        }
     }
 
     testOptions {
@@ -52,8 +56,23 @@ android {
     }
 }
 
+    lint {
+        // Errors fail the build; warnings are reported but do not. Turning
+        // warnings into errors is worth doing once the first run has shown
+        // what it actually finds.
+        abortOnError = true
+        warningsAsErrors = false
+        checkDependencies = true
+        // Unused resource ids in a game that draws everything itself are noise.
+        disable += setOf("UnusedResources")
+    }
+}
+
 dependencies {
     // The whole game is plain Kotlin plus android.graphics - no third-party
-    // runtime dependencies at all.
+    // runtime dependencies at all. These are test-only and never ship.
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
