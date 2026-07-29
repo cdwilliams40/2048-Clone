@@ -54,7 +54,6 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
-}
 
     lint {
         // Errors fail the build; warnings are reported but do not. Turning
