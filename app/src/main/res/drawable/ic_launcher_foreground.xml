@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A cow's face, kept inside the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- ears -->
+    <path
+        android:fillColor="#C9C4BC"
+        android:pathData="M23,48 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 z" />
+    <path
+        android:fillColor="#C9C4BC"
+        android:pathData="M65,48 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 z" />
+
+    <!-- head -->
+    <path
+        android:fillColor="#F6F4EE"
+        android:pathData="M31,56 a23,23 0 1,0 46,0 a23,23 0 1,0 -46,0 z" />
+
+    <!-- patch -->
+    <path
+        android:fillColor="#3A3230"
+        android:pathData="M35,48 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 z" />
+
+    <!-- muzzle -->
+    <path
+        android:fillColor="#E896A5"
+        android:pathData="M42,68 a12,10 0 1,0 24,0 a12,10 0 1,0 -24,0 z" />
+    <path
+        android:fillColor="#C2707E"
+        android:pathData="M47,67 a2.5,3 0 1,0 5,0 a2.5,3 0 1,0 -5,0 z" />
+    <path
+        android:fillColor="#C2707E"
+        android:pathData="M56,67 a2.5,3 0 1,0 5,0 a2.5,3 0 1,0 -5,0 z" />
+
+    <!-- eyes -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,50 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 z" />
+    <path
+        android:fillColor="#201C1A"
+        android:pathData="M61,50 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 z" />
+</vector>

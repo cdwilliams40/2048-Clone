@@ -1,5 +1,13 @@
-__pycache__/
-*.pyc
-.pytest_cache/
-.buildozer/
-bin/
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.keystore
+captures/
+.cxx/
+
+# IDE
+.idea/
+*.iml
